@@ -1,0 +1,2 @@
+[console_scripts]
+chat-analyze = processing.chat_processing.cli:main

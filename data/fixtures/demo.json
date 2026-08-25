@@ -1,0 +1,12 @@
+{
+  "title": "The Friday Group",
+  "messages": [
+    {"id": "1", "sender_name": "Ava", "timestamp": "2026-01-01T10:00:00Z", "content": "I accidentally joined the meeting 20 minutes early."},
+    {"id": "2", "sender_name": "Ben", "timestamp": "2026-01-01T10:00:08Z", "content": "HAHA 😂"},
+    {"id": "3", "sender_name": "Cara", "timestamp": "2026-01-01T10:00:20Z", "content": "lol that is so you", "reactions": [{"emoji": "❤️", "actor": "Ava"}]},
+    {"id": "4", "sender_name": "Ava", "timestamp": "2026-01-01T15:00:00Z", "content": "Who is getting coffee?"},
+    {"id": "5", "sender_name": "Ben", "timestamp": "2026-01-01T15:00:30Z", "content": "Me!"},
+    {"id": "6", "sender_name": "Ben", "timestamp": "2026-01-01T15:00:32Z", "content": "Actually make that two coffees."},
+    {"id": "7", "sender_name": "Cara", "timestamp": "2026-01-01T15:01:00Z", "content": "You are a novelist today with that order."}
+  ]
+}

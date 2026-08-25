@@ -1,0 +1,91 @@
+/* Keep navigation in real columns beside the presentation. */
+.deck-stage {
+  display: grid;
+  grid-template-columns: minmax(64px, 1fr) minmax(0, 760px) minmax(64px, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 16px;
+  width: 100%;
+  max-width: 1040px;
+  padding: 0;
+  margin-bottom: 52px;
+}
+
+.deck-stage .superlative-deck {
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.deck-stage .deck-navigation {
+  display: contents;
+  position: static;
+  inset: auto;
+  height: auto;
+  max-width: none;
+  margin: 0;
+}
+
+.deck-stage .deck-navigation .deck-arrow {
+  position: static;
+  grid-row: 1;
+  width: 100%;
+  transform: none;
+  pointer-events: auto;
+}
+
+.deck-stage .deck-navigation .deck-arrow:first-child {
+  grid-column: 1;
+  left: auto;
+}
+
+.deck-stage .deck-navigation .deck-arrow:last-child {
+  grid-column: 3;
+  right: auto;
+}
+
+.deck-stage .deck-navigation .deck-dots {
+  grid-column: 2;
+  grid-row: 2;
+  position: static;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  margin-top: 18px;
+  pointer-events: auto;
+}
+
+@media (max-width: 850px) {
+  .deck-stage {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    column-gap: 8px;
+    padding: 0;
+  }
+
+  .deck-stage .deck-navigation .deck-arrow {
+    width: 40px;
+    height: 40px;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    justify-self: center;
+  }
+
+  .deck-stage .deck-navigation .deck-dots {
+    margin-top: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .deck-stage {
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+    column-gap: 5px;
+    margin-bottom: 48px;
+  }
+
+  .deck-stage .deck-navigation .deck-arrow {
+    width: 36px;
+    height: 36px;
+  }
+}
