@@ -21,6 +21,8 @@ type Ranking = {
   rate?: number;
   max_run?: number;
   average_words?: number;
+  longest_message?: string | null;
+  longest_message_words?: number;
   per_100_messages?: number;
   total_emojis?: number;
   total_media_items?: number;
@@ -308,33 +310,37 @@ function reactionTypeSummary(row: Ranking) {
 
 function rankingDetail(key: string, row: Ranking) {
   if (key === "comedian")
-    return `${row.ranking_score ?? row.score ?? 0}/100 volume-adjusted score · ${row.score ?? 0}/100 average reaction impact · ${row.total_reactions ?? 0} positive reactions · ${row.reaction_rate ?? 0}% of messages reacted to · ${reactionTypeSummary(row)}`;
+    return `${row.ranking_score ?? row.score ?? 0} comedy score · ${row.total_reactions ?? 0} positive reactions · ${row.reaction_rate ?? 0}% of messages reacted to`;
   if (key === "double_texter")
     return `${row.rate ?? 0}% double-text rate · longest run ${row.max_run ?? 0} messages`;
-  if (key === "novelist")
-    return `${row.average_words ?? 0} average words · ${row.eligible_messages ?? 0} text messages`;
+  if (key === "novelist") {
+    const longWords = row.longest_message_words ?? 0;
+    return (
+      `${row.average_words ?? 0} average words · ${row.eligible_messages ?? 0} text messages · longest message ` +
+      (longWords > 0 ? `\n${longWords} words` : "")
+    );
+  }
   if (key === "conversation_starter")
-    return `${row.ranking_score ?? 0}/100 blend · ${row.long_gap_starts ?? 0} starts after 4+ hours · ${row.starts_per_100_messages ?? 0} starts per 100 messages · ${row.message_count ?? 0} messages`;
+    return `${row.ranking_score ?? 0} starting score · ${row.long_gap_starts ?? 0} starts after 4+ hours · ${row.starts_per_100_messages ?? 0} starts per 100 messages`;
   if (key === "night_owl")
     return `${Math.round((row.share ?? 0) * 100)}% of messages from midnight–6 a.m. · ${row.messages ?? 0} messages`;
   if (key === "early_bird")
     return `${Math.round((row.share ?? 0) * 100)}% of messages from 6–9 a.m. · ${row.messages ?? 0} messages`;
   if (key === "emoji_addict")
-    return `${row.ranking_score ?? 0}/100 blend · ${row.total_emojis ?? 0} emojis total · ${row.per_100_messages ?? 0} per 100 messages · ${emojiSummary(row)}`;
+    return `${row.ranking_score ?? 0} emoji score · ${row.total_emojis ?? 0} emojis total · ${row.per_100_messages ?? 0} per 100 messages`;
   if (key === "media_spammer")
-    return `${row.ranking_score ?? 0}/100 blend · ${row.total_media_items ?? 0} media/link items total · ${row.per_100_messages ?? 0} per 100 messages · ${mediaSummary(row)}`;
+    return `${row.ranking_score ?? 0} media score · ${row.total_media_items ?? 0} media/link items total · ${row.per_100_messages ?? 0} per 100 messages`;
   if (key === "quick_draw")
     return row.median_reply_seconds === null ||
       row.median_reply_seconds === undefined
       ? `${row.reply_count ?? 0} replies recorded`
-      : `${Math.round(row.median_reply_seconds)} seconds median reply · ${row.reply_count ?? 0} replies`;
+      : `${(row.median_reply_seconds ?? 0).toFixed(1)} seconds median reply · ${row.reply_count ?? 0} replies`;
   if (key === "ghost")
     return `${row.message_count ?? 0} messages · ${Math.round((row.message_share ?? 0) * 100)}% of the conversation · ${row.active_days ?? 0} active days`;
   if (key === "time_traveler")
-    return `${row.late_reply_count ?? 0} late returns · ${row.average_late_hours ?? 0} hours avg delay · longest ${row.longest_late_hours ?? 0} hours · ${row.explicit_late_replies ?? 0} direct replies`;
+    return `${row.late_reply_count ?? 0} late returns · ${row.average_late_hours ?? 0} hours avg delay · longest ${row.longest_late_hours ?? 0} hours`;
   if (key === "grammar_police")
-    return `${row.grammar_score ?? 0}/100 grammar density · ${row.proper_punctuation_rate ?? 0}% punctuation · ${row.capitalization_rate ?? 0}% capitalization · ${row.formal_marker_rate ?? 0}% formal markers · ${row.grammar_messages ?? 0} text messages`;
-  return "Metric details unavailable";
+    return `${row.grammar_score ?? 0} grammar score · ${row.proper_punctuation_rate ?? 0}% punctuation · ${row.capitalization_rate ?? 0}% capitalization`;
 }
 
 export default function Home() {

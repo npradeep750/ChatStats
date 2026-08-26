@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+
+_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
 
 @dataclass
@@ -39,7 +42,8 @@ class Message:
 
     @property
     def word_count(self) -> int:
-        return len(self.text.replace("\n", " ").split())
+        collapsed = _URL_RE.sub("url", self.text.replace("\n", " "))
+        return len(collapsed.split())
 
 
 @dataclass

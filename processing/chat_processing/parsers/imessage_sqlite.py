@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import struct
 import tempfile
 from collections import defaultdict
 from typing import Any
 import unicodedata
 
 from ..models import CanonicalDataset, Conversation, Message, Participant, Reaction
-from ..imessage_attributed import decode_mentions
+from ..imessage_attributed import _Decoder, decode_mentions
 from ..normalization import classify_media, extract_emojis, extract_links, normalize_text, parse_timestamp, stable_id
 
 
@@ -77,39 +78,100 @@ def _handle_value_expression(handle_columns: set[str]) -> str:
     return available[0] if len(available) == 1 else "COALESCE(" + ", ".join(available) + ")"
 
 
+_METADATA_TOKEN_RE = re.compile(
+    r'(?:\bNS[A-Z]\w+|\bUI[A-Z]\w+|\bCF[A-Z]\w+|\b__\w+|'
+    r'\btypedstream|\bstreamtyped\b)'
+)
+
+
+def _extract_text_from_raw_bytes(raw: bytes) -> str:
+    """Best-effort extraction of visible text from a binary blob.
+
+    When the typedstream decoder fails (which happens for many
+    attributedBody blobs), the raw byte decode picks up Apple class
+    names, binary metadata, and other junk as extra "words".  This
+    function finds the actual message text by splitting on null bytes
+    and control characters, stripping known metadata tokens, and
+    returning the longest remaining fragment that looks like natural
+    language.
+    """
+    raw_candidates = [
+        (raw.decode("utf-8", errors="ignore"), 2),
+        (raw.decode("utf-16le", errors="ignore"), 1),
+        (raw.decode("latin-1", errors="ignore"), 1),
+    ]
+    best = ""
+    best_score = (-1, -1, -1, -1)
+    for candidate, enc_weight in raw_candidates:
+        # Replace control characters with nulls, then split on null
+        # bytes to isolate readable fragments.
+        cleaned: list[str] = []
+        for char in candidate:
+            cat = unicodedata.category(char)
+            if cat.startswith("C") and char not in {"\u200d"}:
+                cleaned.append("\x00")
+            else:
+                cleaned.append(char)
+        text = "".join(cleaned)
+        # Split on nulls to get fragments between binary metadata.
+        for fragment in text.split("\x00"):
+            fragment = fragment.strip()
+            if len(fragment) < 2:
+                continue
+            # Strip known Apple metadata tokens.
+            stripped = normalize_text(_METADATA_TOKEN_RE.sub(" ", fragment))
+            stripped = stripped.strip()
+            if len(stripped) < 2:
+                continue
+            has_space = " " in stripped
+            emoji_count = len(extract_emojis(stripped))
+            alpha_ratio = (
+                sum(c.isalpha() for c in stripped) / max(1, len(stripped))
+            )
+            if alpha_ratio < 0.3 and emoji_count == 0:
+                continue
+            # Score: emoji-rich > multi-word > longer > higher alpha.
+            score = (
+                enc_weight,
+                emoji_count * 100 + int(has_space) * 10_000,
+                len(stripped),
+                int(alpha_ratio * 1000),
+            )
+            if score > best_score:
+                best_score = score
+                best = stripped
+    return best
+
+
 def _message_text(value: Any) -> str:
     """Read normal text and the text embedded in NSAttributedString blobs."""
     if not isinstance(value, (bytes, bytearray, memoryview)):
         return normalize_text(value)
     raw = bytes(value)
-    raw_candidates = [
-        raw.decode("utf-8", errors="ignore"),
-        raw.decode("utf-16le", errors="ignore"),
-        raw.decode("utf-16be", errors="ignore"),
-        raw.decode("latin-1", errors="ignore"),
-    ]
-    candidates: list[str] = []
-    for candidate in raw_candidates:
-        cleaned: list[str] = []
-        for char in candidate:
-            category = unicodedata.category(char)
-            if category.startswith("C") and char not in {"\u200d"}:
-                cleaned.append(" ")
-            else:
-                cleaned.append(char)
-        candidates.append(normalize_text("".join(cleaned)))
-    # Tapback descriptions are often embedded as a readable UTF-8 fragment in
-    # an otherwise binary attributedBody blob. Prefer that fragment when found.
-    for candidate in candidates:
-        if any(pattern.search(candidate) for pattern, _ in TEXT_REACTION_PATTERNS):
-            return normalize_text(candidate)
-    def candidate_score(candidate: str) -> tuple[int, int, int]:
-        emoji_count = len(extract_emojis(candidate))
-        letter_count = sum(char.isalpha() for char in candidate)
-        mojibake_count = sum(candidate.count(marker) for marker in ("Ã", "Â", "ð", "Ÿ", "�"))
-        return (emoji_count * 1000 + letter_count * 2 - mojibake_count * 20, emoji_count, len(candidate))
-
-    return max(candidates, key=candidate_score, default="")
+    # Try the proper typedstream decoder first.
+    try:
+        decoded = _Decoder(raw).decode()
+        if (
+            decoded
+            and decoded.kind == "attributed_string"
+            and isinstance(decoded.value, dict)
+            and decoded.value.get("text")
+        ):
+            return normalize_text(decoded.value["text"])
+    except (IndexError, UnicodeError, ValueError, struct.error):
+        pass
+    # Tapback descriptions are often embedded as a readable UTF-8
+    # fragment in an otherwise binary attributedBody blob.
+    for encoding in ("utf-8", "latin-1"):
+        try:
+            candidate = raw.decode(encoding, errors="ignore")
+        except Exception:
+            continue
+        for pattern, _ in TEXT_REACTION_PATTERNS:
+            if pattern.search(candidate):
+                return normalize_text(candidate)
+    # Fall back to smart extraction from raw bytes.
+    return normalize_text(_extract_text_from_raw_bytes(raw))
 
 
 def _text_reaction(text: str) -> tuple[str, str] | None:

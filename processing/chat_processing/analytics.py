@@ -375,6 +375,7 @@ def basic_metrics(dataset: CanonicalDataset) -> dict[str, Any]:
             runs.append(current)
         text_messages = [message for message in own if message.text]
         words = [message.word_count for message in text_messages]
+        longest_msg = max(text_messages, key=lambda m: m.word_count, default=None)
         emojis = Counter(emoji for message in own for emoji in extract_emojis(message.text))
         media: Counter[str] = Counter()
         for message in own:
@@ -387,7 +388,7 @@ def basic_metrics(dataset: CanonicalDataset) -> dict[str, Any]:
         total_emojis = sum(emojis.values())
         total_media_items = sum(media.values())
         results["double_texter"].append({"participant": name, "participant_id": sender_id, "rate": round(100 * sum(run >= 2 for run in runs) / max(1, len(own)), 2), "max_run": max(runs, default=0)})
-        results["novelist"].append({"participant": name, "participant_id": sender_id, "average_words": round(sum(words) / max(1, len(words)), 2), "eligible_messages": len(words)})
+        results["novelist"].append({"participant": name, "participant_id": sender_id, "average_words": round(sum(words) / max(1, len(words)), 2), "eligible_messages": len(words), "longest_message": longest_msg.text if longest_msg else None, "longest_message_words": longest_msg.word_count if longest_msg else 0})
         results["emoji_addict"].append({"participant": name, "participant_id": sender_id, "per_100_messages": round(100 * total_emojis / max(1, message_count), 2), "total_emojis": total_emojis, "message_count": message_count, "top_emojis": emojis.most_common(5)})
         results["media_spammer"].append({"participant": name, "participant_id": sender_id, "per_100_messages": round(100 * total_media_items / max(1, message_count), 2), "total_media_items": total_media_items, "message_count": message_count, "media": dict(media)})
         results["night_owl"].append({"participant": name, "participant_id": sender_id, "share": round(night / max(1, len(own)), 3), "messages": night})
