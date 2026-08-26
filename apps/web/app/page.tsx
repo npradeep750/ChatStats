@@ -33,6 +33,23 @@ type Ranking = {
   messages?: number;
   top_emojis?: unknown[];
   media?: Record<string, number>;
+  message_share?: number;
+  active_days?: number;
+  late_reply_count?: number;
+  average_late_hours?: number;
+  longest_late_hours?: number;
+  intervening_messages?: number;
+  explicit_late_replies?: number;
+  grammar_score?: number;
+  proper_punctuation_rate?: number;
+  capitalization_rate?: number;
+  formal_marker_rate?: number;
+  grammar_messages?: number;
+  minimum_sample?: number;
+  silence_gaps?: number;
+  silence_trigger_rate?: number;
+  total_silence_hours?: number;
+  longest_silence_hours?: number;
 };
 type ReportParticipant = { participant_id: string; display_name: string };
 type Report = {
@@ -99,6 +116,9 @@ const titleLabels: Record<string, string> = {
   emoji_addict: "The Emoji Addict",
   media_spammer: "The Media Spammer",
   quick_draw: "The Quick-Draw Responder",
+  ghost: "The Ghost",
+  time_traveler: "The Time Traveler",
+  grammar_police: "The Grammar Police",
 };
 
 function readLocalReports(): SavedReport[] {
@@ -182,23 +202,29 @@ function compactReportForSave(nextReport: Report): Report {
 
 const superlativeDescriptions: Record<string, string> = {
   comedian:
-    "The participant whose messages earned the strongest combination of average reaction impact and total positive reaction volume. Every positive reaction type counts equally in this chat.",
+    "The participant whose messages are the funniest based on average and total positive reaction volume.",
   double_texter:
     "The participant most likely to send multiple messages in a row before someone else replies.",
   novelist:
     "The participant who writes the longest messages on average, based on word count.",
   conversation_starter:
-    "The participant who most often restarts the conversation after at least four hours of silence, balancing restart frequency with total volume.",
+    "The participant who most often starts the conversation after at least four hours of silence.",
   night_owl:
     "The participant with the strongest share of messages sent between midnight and 6 a.m.",
   early_bird:
     "The participant with the strongest share of messages sent between 6 a.m. and 9 a.m.",
   emoji_addict:
-    "The participant with the strongest emoji habit, blending emojis per 100 messages with total emoji volume.",
+    "The participant with the strongest emoji habit, based on average and total emoji volume.",
   media_spammer:
-    "The participant with the strongest media habit, blending media per 100 messages with total photos, videos, files, and links.",
+    "The participant with the strongest media habit, based on average and total volume of photos, videos, files, and links.",
   quick_draw:
     "The participant with the fastest typical reply time to another participant.",
+  ghost:
+    "The participant with the fewest messages in this selected conversation.",
+  time_traveler:
+    "The participant most likely to reply four or more hours after a message and after the group has gone quiet.",
+  grammar_police:
+    "The participant who uses the most sentence-ending punctuation, capitalization, and formal grammar markers.",
 };
 
 const leaderboardNames: Record<string, string> = { comedian: "humor" };
@@ -220,12 +246,14 @@ function leaderboardRows(nextReport: Report, key: string): Ranking[] {
       typeof (row as Ranking).participant === "string",
     ),
   );
-  return rows.sort((left, right) => {
+  const sortedRows = rows.sort((left, right) => {
     if (key === "quick_draw")
       return (
         (left.median_reply_seconds ?? Number.POSITIVE_INFINITY) -
         (right.median_reply_seconds ?? Number.POSITIVE_INFINITY)
       );
+    if (key === "ghost")
+      return (left.message_count ?? 0) - (right.message_count ?? 0);
     const field =
       key === "double_texter"
         ? "rate"
@@ -237,14 +265,19 @@ function leaderboardRows(nextReport: Report, key: string): Ranking[] {
               ? "share"
               : key === "comedian"
                 ? "ranking_score"
-                : ["emoji_addict", "media_spammer"].includes(key)
+                : ["emoji_addict", "media_spammer", "time_traveler"].includes(
+                      key,
+                    )
                   ? "ranking_score"
-                  : "per_100_messages";
+                  : key === "grammar_police"
+                    ? "grammar_score"
+                    : "per_100_messages";
     return (
       Number((right as Record<string, unknown>)[field] ?? 0) -
       Number((left as Record<string, unknown>)[field] ?? 0)
     );
   });
+  return sortedRows;
 }
 
 function emojiSummary(row: Ranking) {
@@ -295,6 +328,12 @@ function rankingDetail(key: string, row: Ranking) {
       row.median_reply_seconds === undefined
       ? `${row.reply_count ?? 0} replies recorded`
       : `${Math.round(row.median_reply_seconds)} seconds median reply · ${row.reply_count ?? 0} replies`;
+  if (key === "ghost")
+    return `${row.message_count ?? 0} messages · ${Math.round((row.message_share ?? 0) * 100)}% of the conversation · ${row.active_days ?? 0} active days`;
+  if (key === "time_traveler")
+    return `${row.late_reply_count ?? 0} late returns · ${row.average_late_hours ?? 0} hours avg delay · longest ${row.longest_late_hours ?? 0} hours · ${row.explicit_late_replies ?? 0} direct replies`;
+  if (key === "grammar_police")
+    return `${row.grammar_score ?? 0}/100 grammar density · ${row.proper_punctuation_rate ?? 0}% punctuation · ${row.capitalization_rate ?? 0}% capitalization · ${row.formal_marker_rate ?? 0}% formal markers · ${row.grammar_messages ?? 0} text messages`;
   return "Metric details unavailable";
 }
 
@@ -787,8 +826,8 @@ export default function Home() {
                 ))}
               </select>
               <small className="field-help">
-                Used for Night Owl and Early Bird. Message timestamps stay in
-                UTC internally.
+                Used for time-based superlatives. Message timestamps stay in UTC
+                internally.
               </small>
             </label>
             <button disabled={!file || Boolean(unavailableFormat) || busy}>

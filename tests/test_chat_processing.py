@@ -109,7 +109,46 @@ class AnalyticsTests(unittest.TestCase):
         self.assertIn("playful_agreement", result["labels"])
         self.assertIn("question", result["labels"])
 
+    def test_ghost_uses_absolute_message_participation(self) -> None:
+        dataset = CanonicalDataset(
+            Conversation("c", "Test", "json"),
+            [Participant("a", "Ava", "c"), Participant("b", "Ben", "c"), Participant("c", "Cam", "c")],
+            [message("a1", "a", 0, "one"), message("a2", "a", 1, "two"), message("b1", "b", 2, "three")],
+        )
+        rows = {row["participant_id"]: row for row in basic_metrics(dataset)["ghost"]}
+        self.assertEqual(rows["c"]["message_count"], 0)
+        self.assertEqual(rows["a"]["message_count"], 2)
 
+    def test_time_traveler_detects_late_explicit_reply(self) -> None:
+        late_reply = Message(
+            "m3",
+            "c",
+            "b",
+            datetime.fromtimestamp(5 * 60 * 60, timezone.utc),
+            "I just saw this",
+            reply_to_message_id="m1",
+        )
+        dataset = CanonicalDataset(
+            Conversation("c", "Test", "json"),
+            [Participant("a", "Ava", "c"), Participant("b", "Ben", "c")],
+            [message("m1", "a", 0, "question"), message("m2", "a", 60, "follow up"), late_reply],
+        )
+        rows = {row["participant_id"]: row for row in basic_metrics(dataset)["time_traveler"]}
+        self.assertEqual(rows["b"]["late_reply_count"], 1)
+        self.assertEqual(rows["b"]["explicit_late_replies"], 1)
+        self.assertGreaterEqual(rows["b"]["average_late_hours"], 4.9)
+
+    def test_grammar_police_requires_sample_and_scores_formality(self) -> None:
+        messages = [message(f"a{index}", "a", index, "Hello, everyone.") for index in range(5)]
+        messages.extend(message(f"b{index}", "b", 10 + index, "hello everyone") for index in range(5))
+        dataset = CanonicalDataset(
+            Conversation("c", "Test", "json"),
+            [Participant("a", "Ava", "c"), Participant("b", "Ben", "c")],
+            messages,
+        )
+        rows = {row["participant_id"]: row for row in basic_metrics(dataset)["grammar_police"]}
+        self.assertEqual(rows["a"]["grammar_messages"], 5)
+        self.assertGreater(rows["a"]["grammar_score"], rows["b"]["grammar_score"])
 class ParserTests(unittest.TestCase):
     def test_json_fixture_and_report(self) -> None:
         raw = json.dumps({"title": "Chat", "messages": [{"id": "1", "sender": "A", "timestamp": "2026-01-01T00:00:00Z", "text": "hello"}]}).encode()
@@ -229,6 +268,33 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(len(dataset.reactions), 3)
         self.assertTrue(all(reaction.message_id == dataset.messages[0].message_id for reaction in dataset.reactions))
         self.assertEqual({reaction.reaction_emoji for reaction in dataset.reactions}, {"😂", "❤️", "👍"})
+
+    def test_sqlite_parser_reads_native_inline_replies(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".sqlite") as handle:
+            connection = sqlite3.connect(handle.name)
+            connection.executescript("""
+                CREATE TABLE handle (id TEXT);
+                CREATE TABLE message (
+                    text TEXT,
+                    handle_id INTEGER,
+                    date INTEGER,
+                    is_from_me INTEGER,
+                    guid TEXT,
+                    reply_to_guid TEXT,
+                    thread_originator_guid TEXT
+                );
+            """)
+            connection.execute("INSERT INTO handle (id) VALUES ('ava@example.com')")
+            connection.execute("INSERT INTO handle (id) VALUES ('ben@example.com')")
+            connection.execute("INSERT INTO message VALUES (?, ?, ?, ?, ?, ?, ?)", ("Original", 1, 1767225600000000000, 0, "guid-1", None, None))
+            connection.execute("INSERT INTO message VALUES (?, ?, ?, ?, ?, ?, ?)", ("This is a native reply", 2, 1767225601000000000, 0, "guid-2", "p:0/guid-1", "p:0/guid-1"))
+            connection.commit()
+            connection.close()
+            with open(handle.name, "rb") as sqlite_file:
+                raw = sqlite_file.read()
+        dataset = parse_bytes("chat.db", raw)
+        self.assertEqual(dataset.messages[1].reply_to_message_id, dataset.messages[0].message_id)
+        self.assertEqual(len(dataset.messages), 2)
 
     def test_sqlite_parser_preserves_emoji_only_attributed_body(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".sqlite") as handle:

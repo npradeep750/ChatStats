@@ -8,6 +8,7 @@ from typing import Any
 import unicodedata
 
 from ..models import CanonicalDataset, Conversation, Message, Participant, Reaction
+from ..imessage_attributed import decode_mentions
 from ..normalization import classify_media, extract_emojis, extract_links, normalize_text, parse_timestamp, stable_id
 
 
@@ -38,6 +39,19 @@ TEXT_REACTION_PATTERNS = (
 
 def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
     return {row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')}
+
+
+def _guid_variants(value: Any) -> set[str]:
+    """Return raw and prefixed forms used by macOS/iOS reply GUID columns."""
+    if value in (None, ""):
+        return set()
+    raw = str(value)
+    variants = {raw}
+    if "/" in raw:
+        variants.add(raw.rsplit("/", 1)[-1])
+    if raw.startswith("bp:"):
+        variants.add(raw[3:])
+    return variants
 
 
 def _title(row: sqlite3.Row, columns: set[str], row_id: int) -> str:
@@ -267,12 +281,8 @@ def parse_sqlite(raw: bytes, timezone_name: str = "UTC", conversation_id: str | 
                         descriptor = " ".join(str(value or "") for value in attachment_row[1:])
                         attachment_descriptors.setdefault(message_row_id, []).append(descriptor)
 
-        if "text" in message_columns and "attributedBody" in message_columns:
-            select_text = 'COALESCE(NULLIF(m.text, ""), m.attributedBody, "")'
-        elif "text" in message_columns:
-            select_text = 'COALESCE(m.text, "")'
-        else:
-            select_text = 'COALESCE(m.attributedBody, "")'
+        plain_text_column = 'm.text' if "text" in message_columns else 'NULL'
+        attributed_body_column = 'm.attributedBody' if "attributedBody" in message_columns else 'NULL'
         sender_column = "m.handle_id" if "handle_id" in message_columns else "NULL"
         date_column = "m.date" if "date" in message_columns else "NULL"
         own_column = "m.is_from_me" if "is_from_me" in message_columns else "0"
@@ -281,10 +291,13 @@ def parse_sqlite(raw: bytes, timezone_name: str = "UTC", conversation_id: str | 
         associated_id = "m.associated_message_id" if "associated_message_id" in message_columns else "NULL"
         associated_guid = "m.associated_message_guid" if "associated_message_guid" in message_columns else "NULL"
         message_guid = "m.guid" if "guid" in message_columns else "NULL"
+        reply_to_guid = "m.reply_to_guid" if "reply_to_guid" in message_columns else "NULL"
+        thread_originator_guid = "m.thread_originator_guid" if "thread_originator_guid" in message_columns else "NULL"
         rows = connection.execute(
             f"""
             SELECT m.ROWID AS _rowid,
-                   {select_text} AS _text,
+                   {plain_text_column} AS _plain_text,
+                   {attributed_body_column} AS _attributed_body,
                    {sender_column} AS _handle_id,
                    {date_column} AS _date,
                    {own_column} AS _is_from_me,
@@ -292,6 +305,8 @@ def parse_sqlite(raw: bytes, timezone_name: str = "UTC", conversation_id: str | 
                    {associated_type} AS _associated_type,
                    {associated_id} AS _associated_id,
                    {associated_guid} AS _associated_guid,
+                   {reply_to_guid} AS _reply_to_guid,
+                   {thread_originator_guid} AS _thread_originator_guid,
                    {message_guid} AS _guid
             FROM message AS m {message_filter}
             ORDER BY {date_column}, m.ROWID
@@ -300,17 +315,18 @@ def parse_sqlite(raw: bytes, timezone_name: str = "UTC", conversation_id: str | 
         ).fetchall()
         if progress_callback:
             progress_callback(20, f"Reading {len(rows):,} SQLite records")
-        guid_to_rowid = {
-            str(row["_guid"]): int(row["_rowid"])
-            for row in rows
-            if row["_guid"]
-        }
+        guid_to_rowid: dict[str, int] = {}
+        for row in rows:
+            if row["_guid"]:
+                for guid_variant in _guid_variants(row["_guid"]):
+                    guid_to_rowid[guid_variant] = int(row["_rowid"])
         message_texts: dict[int, str] = {}
         exact_text_index: dict[str, list[int]] = defaultdict(list)
         prefix_text_index: dict[str, list[int]] = defaultdict(list)
         for index, row in enumerate(rows, start=1):
             row_id = int(row["_rowid"])
-            text = normalize_text(_message_text(row["_text"]))
+            raw_text_value = row["_plain_text"] if row["_plain_text"] not in (None, "") else row["_attributed_body"]
+            text = normalize_text(_message_text(raw_text_value))
             message_texts[row_id] = text
             if text:
                 normalized_text = text.casefold()
@@ -341,6 +357,7 @@ def parse_sqlite(raw: bytes, timezone_name: str = "UTC", conversation_id: str | 
             sender_id = stable_id("participant", sender.casefold())
             participants.setdefault(sender_id, Participant(sender_id, sender, conversation.conversation_id))
             text_value = message_texts.get(int(row["_rowid"]), "")
+            mentions = decode_mentions(row["_attributed_body"], text_value)
 
             try:
                 associated_type_value = int(row["_associated_type"] or 0)
@@ -406,7 +423,30 @@ def parse_sqlite(raw: bytes, timezone_name: str = "UTC", conversation_id: str | 
             else:
                 media_type = "none"
             media_count = attachment_count + link_count
-            messages.append(Message(stable_id("message", row["_rowid"]), conversation.conversation_id, sender_id, timestamp, text_value, media_type, media_count, str(row["_rowid"])))
+            reply_guid = row["_reply_to_guid"] or row["_thread_originator_guid"]
+            reply_target_row_id = next(
+                (guid_to_rowid[variant] for variant in _guid_variants(reply_guid) if variant in guid_to_rowid),
+                None,
+            )
+            reply_target_message_id = stable_id("message", reply_target_row_id) if reply_target_row_id is not None else None
+            messages.append(
+                Message(
+                    stable_id("message", row["_rowid"]),
+                    conversation.conversation_id,
+                    sender_id,
+                    timestamp,
+                    text_value,
+                    media_type,
+                    media_count,
+                    str(row["_rowid"]),
+                    reply_to_message_id=reply_target_message_id,
+                    source_metadata={
+                        "reply_to_guid": str(reply_guid) if reply_guid else None,
+                        "reply_reference_type": "reply_to_guid" if row["_reply_to_guid"] else "thread_originator_guid" if row["_thread_originator_guid"] else None,
+                        "native_mentions": mentions,
+                    },
+                )
+            )
             normal_message_row_ids.append(int(row["_rowid"]))
             if progress_callback and (index == 1 or index % 1000 == 0 or index == len(rows)):
                 progress_callback(25 + round(10 * index / max(1, len(rows))), f"Parsing SQLite records ({index:,}/{len(rows):,})")

@@ -19,6 +19,15 @@ QUESTION_RE = re.compile(r"\?")
 LAUGH_EMOJIS = {"😂", "🤣", "😆", "😹", "😭"}
 POSITIVE_REACTIONS = {"❤️", "❤", "💕", "💖", "💗", "💓", "💞", "💘", "💝", "😍", "😂", "🤣", "😆", "👍", "👏", "🔥"}
 
+LONG_SILENCE_SECONDS = 4 * 60 * 60
+TIME_TRAVELER_MIN_SECONDS = LONG_SILENCE_SECONDS
+GRAMMAR_MIN_MESSAGES = 5
+FORMAL_GRAMMAR_MARKERS = re.compile(
+    r"\b(?:please|thank you|thanks|could you|would you|however|therefore|although|"
+    r"in addition|for example|to clarify|as a result|i would|we should|kindly)\b",
+    re.IGNORECASE,
+)
+
 
 def _message_map(dataset: CanonicalDataset) -> dict[str, Message]:
     return {message.message_id: message for message in dataset.messages}
@@ -142,6 +151,187 @@ def _eligible(messages: list[Message]) -> list[Message]:
     return [message for message in messages if not message.is_system_message and not message.is_deleted]
 
 
+def _participant_names(dataset: CanonicalDataset) -> dict[str, str]:
+    return {participant.participant_id: participant.display_name for participant in dataset.participants}
+
+
+def _reply_parent_lookup(messages: list[Message]) -> tuple[dict[str, Message], dict[str, Message]]:
+    by_id = {message.message_id: message for message in messages}
+    by_source_id = {
+        str(message.source_message_id): message
+        for message in messages
+        if message.source_message_id
+    }
+    return by_id, by_source_id
+
+
+def _explicit_reply_parent(
+    message: Message,
+    by_id: dict[str, Message],
+    by_source_id: dict[str, Message],
+) -> Message | None:
+    if not message.reply_to_message_id:
+        return None
+    reference = str(message.reply_to_message_id)
+    return by_id.get(reference) or by_source_id.get(reference)
+
+
+def ghost_metrics(dataset: CanonicalDataset, messages: list[Message]) -> list[dict[str, Any]]:
+    """Rank participants by absolute participation in the selected conversation.
+
+    This intentionally includes known participants with zero messages. They may
+    have appeared as a reaction actor or in the export's participant roster,
+    which makes the title useful for the quietest person rather than only the
+    quietest active sender.
+    """
+    names = _participant_names(dataset)
+    counts = Counter(message.sender_id for message in messages)
+    active_days: dict[str, set[str]] = defaultdict(set)
+    for message in messages:
+        active_days[message.sender_id].add(message.timestamp_utc.date().isoformat())
+    total_messages = len(messages)
+    rows = []
+    for participant_id, name in names.items():
+        count = counts[participant_id]
+        rows.append(
+            {
+                "participant": name,
+                "participant_id": participant_id,
+                "message_count": count,
+                "message_share": round(count / max(1, total_messages), 4),
+                "active_days": len(active_days[participant_id]),
+                "scope": "selected conversation",
+            }
+        )
+    return sorted(rows, key=lambda row: (row["message_count"], row["active_days"], row["participant"]))
+
+
+def time_traveler_metrics(dataset: CanonicalDataset, messages: list[Message]) -> list[dict[str, Any]]:
+    """Find unusually late replies or returns after a conversation went quiet.
+
+    An explicit reply reference is preferred. If the export has no reply
+    metadata, a message after a 4+ hour gap from the previous participant's
+    message is treated as a return after silence. This captures both a direct
+    reply to an old message and a late continuation that the source format did
+    not label explicitly.
+    """
+    names = _participant_names(dataset)
+    by_id, by_source_id = _reply_parent_lookup(messages)
+    indexes = {message.message_id: index for index, message in enumerate(messages)}
+    records: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for index, current in enumerate(messages):
+        parent = _explicit_reply_parent(current, by_id, by_source_id)
+        method = "explicit_reply"
+        if parent is None and index > 0:
+            parent = messages[index - 1]
+            method = "return_after_silence"
+        if parent is None or parent.sender_id == current.sender_id:
+            continue
+        seconds_late = (current.timestamp_utc - parent.timestamp_utc).total_seconds()
+        if seconds_late < TIME_TRAVELER_MIN_SECONDS:
+            continue
+        parent_index = indexes.get(parent.message_id, index - 1)
+        records[current.sender_id].append(
+            {
+                "message_id": current.message_id,
+                "parent_message_id": parent.message_id,
+                "seconds_late": seconds_late,
+                "method": method,
+                "intervening_messages": max(0, index - parent_index - 1),
+            }
+        )
+
+    def _trimmed_mean_hours(items: list[dict[str, Any]]) -> float:
+        """Drop the bottom and top quartiles to resist outliers."""
+        values = sorted(item["seconds_late"] for item in items)
+        n = len(values)
+        if n <= 3:
+            return sum(values) / n / 3600
+        lower = n // 4
+        upper = n - n // 4
+        trimmed = values[lower:upper]
+        return sum(trimmed) / len(trimmed) / 3600
+
+    average_hours = {
+        participant_id: _trimmed_mean_hours(items)
+        for participant_id, items in records.items()
+    }
+    max_count = max((len(items) for items in records.values()), default=0)
+    max_average = max(average_hours.values(), default=0.0)
+    rows = []
+    for participant_id, name in names.items():
+        items = records.get(participant_id, [])
+        count = len(items)
+        average = average_hours.get(participant_id, 0.0)
+        count_signal = count / max_count if max_count else 0.0
+        lateness_signal = math.log1p(average) / math.log1p(max_average) if max_average else 0.0
+        rows.append(
+            {
+                "participant": name,
+                "participant_id": participant_id,
+                "late_reply_count": count,
+                "average_late_hours": round(average, 2),
+                "longest_late_hours": round(max((item["seconds_late"] for item in items), default=0) / 3600, 2),
+                "intervening_messages": sum(item["intervening_messages"] for item in items),
+                "explicit_late_replies": sum(item["method"] == "explicit_reply" for item in items),
+                "ranking_score": round(100 * (0.7 * count_signal + 0.3 * lateness_signal), 1),
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda row: (row["ranking_score"], row["late_reply_count"], row["average_late_hours"]),
+        reverse=True,
+    )
+
+
+def _grammar_features(text: str) -> dict[str, float]:
+    words = re.findall(r"\b[A-Za-z]+(?:['’][A-Za-z]+)?\b", text)
+    if not words:
+        return {"score": 0.0, "punctuation": 0.0, "capitalization": 0.0, "formal": 0.0}
+    starts = re.findall(r"(?:^|[.!?\n])\s*[\"'([{]*([A-Za-z])", text)
+    capitalization = sum(letter.isupper() for letter in starts) / max(1, len(starts))
+    sentence_like_count = max(1, len(re.findall(r"[^.!?\n]+", text)))
+    terminal_punctuation = bool(re.search(r"[.!?]\s*$", text))
+    punctuation = min(1.0, (sum(character in ",.!?;:" for character in text) / max(1, len(words) / 8)))
+    punctuation_quality = 0.65 * float(terminal_punctuation) + 0.35 * punctuation
+    formal = min(1.0, len(FORMAL_GRAMMAR_MARKERS.findall(text)) / max(1, sentence_like_count))
+    score = 100 * (0.4 * punctuation_quality + 0.35 * capitalization + 0.25 * formal)
+    return {
+        "score": score,
+        "punctuation": punctuation_quality,
+        "capitalization": capitalization,
+        "formal": formal,
+    }
+
+
+def grammar_police_metrics(dataset: CanonicalDataset, messages: list[Message]) -> list[dict[str, Any]]:
+    names = _participant_names(dataset)
+    by_sender: dict[str, list[dict[str, float]]] = defaultdict(list)
+    for message in messages:
+        # Emoji-only, media-only, and empty messages do not provide evidence of
+        # punctuation or sentence capitalization.
+        if not re.search(r"[A-Za-z]", message.text):
+            continue
+        by_sender[message.sender_id].append(_grammar_features(message.text))
+    rows = []
+    for participant_id, name in names.items():
+        features = by_sender.get(participant_id, [])
+        count = len(features)
+        rows.append(
+            {
+                "participant": name,
+                "participant_id": participant_id,
+                "grammar_score": round(sum(item["score"] for item in features) / max(1, count), 1),
+                "proper_punctuation_rate": round(sum(item["punctuation"] for item in features) / max(1, count) * 100, 1),
+                "capitalization_rate": round(sum(item["capitalization"] for item in features) / max(1, count) * 100, 1),
+                "formal_marker_rate": round(sum(item["formal"] for item in features) / max(1, count) * 100, 1),
+                "grammar_messages": count,
+                "minimum_sample": GRAMMAR_MIN_MESSAGES,
+            }
+        )
+    return sorted(rows, key=lambda row: (row["grammar_score"], row["grammar_messages"]), reverse=True)
+
+
 def _add_volume_weight(rows: list[dict[str, Any]], intensity_key: str, volume_key: str, volume_weight: float = 0.35) -> None:
     """Blend a normalized rate with log-scaled total volume.
 
@@ -220,6 +410,9 @@ def basic_metrics(dataset: CanonicalDataset) -> dict[str, Any]:
     _add_volume_weight(results["emoji_addict"], "per_100_messages", "total_emojis")
     _add_volume_weight(results["media_spammer"], "per_100_messages", "total_media_items")
     _add_volume_weight(results["conversation_starter"], "starts_per_100_messages", "long_gap_starts")
+    results["ghost"] = ghost_metrics(dataset, messages)
+    results["time_traveler"] = time_traveler_metrics(dataset, messages)
+    results["grammar_police"] = grammar_police_metrics(dataset, messages)
     return {key: sorted(value, key=lambda item: item.get("participant", "")) for key, value in results.items()}
 
 
@@ -245,8 +438,11 @@ def build_report(dataset: CanonicalDataset, progress_callback: Any | None = None
         "emoji_addict": max(metrics["emoji_addict"], key=lambda item: item["ranking_score"], default=None),
         "media_spammer": media_winner if media_winner and media_winner["total_media_items"] > 0 else None,
         "quick_draw": min((item for item in metrics["quick_draw"] if item["median_reply_seconds"] is not None), key=lambda item: item["median_reply_seconds"], default=None),
+        "ghost": min(metrics["ghost"], key=lambda item: (item["message_count"], item["active_days"]), default=None),
+        "time_traveler": max((item for item in metrics["time_traveler"] if item["late_reply_count"] > 0), key=lambda item: item["ranking_score"], default=None),
+        "grammar_police": max((item for item in metrics["grammar_police"] if item["grammar_messages"] >= item["minimum_sample"]), key=lambda item: item["grammar_score"], default=None),
     }
-    result = {"report_metadata": {"analytics_version": "0.1.0", "source_format": dataset.conversation.source_format, "timezone": dataset.conversation.timezone, "privacy_mode": "local_or_ephemeral_cloud"}, "conversation_summary": {"title": dataset.conversation.title, "message_count": len(messages), "participant_count": len(participants), "date_start": min((message.timestamp_utc.isoformat() for message in messages), default=None), "date_end": max((message.timestamp_utc.isoformat() for message in messages), default=None)}, "participants": [{"participant_id": key, "display_name": value} for key, value in participants.items()], "titles": titles, "leaderboards": {"humor": humor, **metrics}, "warnings": dataset.warnings, "quality": {"reply_attribution": "explicit when available, chronological heuristic otherwise", "raw_text_retained": False}}
+    result = {"report_metadata": {"analytics_version": "0.2.0", "source_format": dataset.conversation.source_format, "timezone": dataset.conversation.timezone, "privacy_mode": "local_or_ephemeral_cloud"}, "conversation_summary": {"title": dataset.conversation.title, "message_count": len(messages), "participant_count": len(participants), "date_start": min((message.timestamp_utc.isoformat() for message in messages), default=None), "date_end": max((message.timestamp_utc.isoformat() for message in messages), default=None)}, "participants": [{"participant_id": key, "display_name": value} for key, value in participants.items()], "titles": titles, "leaderboards": {"humor": humor, **metrics}, "warnings": dataset.warnings, "quality": {"reply_attribution": "explicit when available, chronological heuristic otherwise", "raw_text_retained": False,            "superlative_sample_rules": {"grammar_police": f"requires at least {GRAMMAR_MIN_MESSAGES} text messages"}}}
     if progress_callback:
         progress_callback(95, "Finalizing report")
     return result

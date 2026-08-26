@@ -17,7 +17,7 @@ Then open http://127.0.0.1:8000. Local uploads up to 1 GB are accepted by defaul
 - Generic Instagram-style JSON, CSV, and iMessage SQLite parsing.
 - Conversation-relative Humor Index with equal reaction-type weights.
 - Reply attribution and reply-nature classification.
-- Double Texter, Novelist, Conversation Starter, Night Owl, Early Bird, Emoji Addict, Media Spammer, and Quick-Draw metrics.
+- Double Texter, Novelist, Conversation Starter, Night Owl, Early Bird, Emoji Addict, Media Spammer, Quick-Draw, Ghost, Time Traveler, and Grammar Police metrics.
 - FastAPI upload endpoint and a small dashboard client.
 
 See `docs/analytics-definitions.md` for the metric contract and `docs/privacy-and-retention.md` for the security boundary.
