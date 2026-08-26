@@ -368,10 +368,23 @@ export default function Home() {
   const [slideIndex, setSlideIndex] = useState(0);
   const [winnerRevealed, setWinnerRevealed] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [typedText, setTypedText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressStage, setProgressStage] = useState("");
+
+  useEffect(() => {
+    const target = "Find out who really runs the group chat.";
+    let i = 0;
+    setTypedText("");
+    const interval = setInterval(() => {
+      i += 1;
+      setTypedText(target.slice(0, i));
+      if (i >= target.length) clearInterval(interval);
+    }, 55);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -646,7 +659,8 @@ export default function Home() {
       .map((c) => c.conversation_id),
   );
   const selectedIsAnalyzed =
-    selectedConversationId !== "" && analyzedChoiceIds.has(selectedConversationId);
+    selectedConversationId !== "" &&
+    analyzedChoiceIds.has(selectedConversationId);
 
   const displayedReport = report
     ? withParticipantNames(report, participantNames)
@@ -722,7 +736,20 @@ export default function Home() {
             setParticipantNames({});
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{verticalAlign: "-2px", marginRight: 6}}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ verticalAlign: "-2px", marginRight: 6 }}
+          >
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
           Home
         </button>
         <div className="history-heading">
@@ -767,349 +794,362 @@ export default function Home() {
         </div>
         <p className="sidebar-note">
           {user
-            ? "Saved privately to your Supabase account."
+            ? "Saved privately in your account."
             : "Saved in this browser. Sign in to keep history across devices."}
         </p>
       </aside>
       <main className="content">
         {homeView && (
-        <>
-        <section className="hero">
-          <p className="eyebrow">CHAT STATS</p>
-          <h1>Find out who really runs the group chat.</h1>
-          <p className="lede">
-            Upload an iMessage export and get unexpected superlatives.
-          </p>
-        </section>
-        <section className="panel instructions-panel">
-          <h2>How to get your chat file</h2>
-          <details open>
-            <summary>iMessage on a Mac</summary>
-            <ol>
-              <li>
-                Open Finder and choose <strong>Go → Go to Folder</strong>.
-              </li>
-              <li>
-                Enter <code>~/Library/Messages/</code> and press Enter.
-              </li>
-              <li>
-                Make a copy of <code>chat.db</code> and upload the copy. Never
-                move or edit the original.
-              </li>
-              <li>
-                If the database contains multiple conversations, the app will
-                show a list so you can choose the group chat to analyze.
-              </li>
-              <li>
-                Do not upload screenshots, PDFs, a media folder, or your entire
-                phone backup.
-              </li>
-            </ol>
-            <p className="privacy">
-              Apple usually stores phone numbers and emails in{" "}
-              <code>chat.db</code>, not your Contacts names. After analysis, use
-              the <strong>Name participants</strong> panel to label each person.
-              Those labels are saved with the report.
-            </p>
-          </details>
-          <div className="locked-format" aria-disabled="true">
-            <span>Instagram group chat</span>
-            <span className="coming-soon-pill">Coming soon · locked</span>
-          </div>
-          <div className="locked-format" aria-disabled="true">
-            <span>CSV file</span>
-            <span className="coming-soon-pill">Coming soon · locked</span>
-          </div>
-          <p className="privacy">
-            Currently supported: iMessage <code>chat.db</code>,{" "}
-            <code>.sqlite</code>, or <code>.sqlite3</code> files. Instagram and
-            CSV uploads are temporarily unavailable.
-          </p>
-        </section>
-        <section className="panel">
-          <form onSubmit={submit}>
-            <label>
-              Chat export
-              <input
-                type="file"
-                accept=".json,.csv,.sqlite,.sqlite3,.db"
-                onChange={(event) =>
-                  onFileChange(event.target.files?.[0] ?? null)
-                }
-              />
-              <small className="field-help">
-                iMessage files are supported now. Instagram JSON and CSV are
-                under construction.
-              </small>
-            </label>
-            {unavailableFormat && (
-              <div className="under-construction upload-warning">
-                <strong>
-                  {unavailableFormat} uploads are not available yet
-                </strong>
-                <span>Please select an iMessage SQLite file to continue.</span>
+          <>
+            <section className="hero">
+              <p className="eyebrow">CHAT STATS</p>
+              <h1>
+                {typedText}
+                <span className="cursor">|</span>
+              </h1>
+              <p className="lede">
+                Upload an iMessage export and get unexpected superlatives.
+              </p>
+            </section>
+            <section className="panel instructions-panel">
+              <h2>How to get your chat file</h2>
+              <details open>
+                <summary>iMessage on a Mac</summary>
+                <ol>
+                  <li>
+                    Open Finder and choose <strong>Go → Go to Folder</strong>.
+                  </li>
+                  <li>
+                    Enter <code>~/Library/Messages/</code> and press Enter.
+                  </li>
+                  <li>
+                    Make a copy of <code>chat.db</code> and upload the copy.
+                    Never move or edit the original.
+                  </li>
+                  <li>
+                    If the database contains multiple conversations, the app
+                    will show a list so you can choose the group chat to
+                    analyze.
+                  </li>
+                  <li>
+                    Do not upload screenshots, PDFs, a media folder, or your
+                    entire phone backup.
+                  </li>
+                </ol>
+                <p className="privacy">
+                  Apple usually stores phone numbers and emails in{" "}
+                  <code>chat.db</code>, not your Contacts names. After analysis,
+                  use the <strong>Name participants</strong> panel to label each
+                  person. Those labels are saved with the report.
+                </p>
+              </details>
+              <div className="locked-format" aria-disabled="true">
+                <span>Instagram group chat</span>
+                <span className="coming-soon-pill">Coming soon · locked</span>
               </div>
-            )}
-            <label>
-              Timezone for timing metrics
-              <select
-                value={timezone}
-                onChange={(event) => setTimezone(event.target.value)}
-              >
-                {TIMEZONE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <small className="field-help">
-                Used for time-based superlatives. Message timestamps stay in UTC
-                internally.
-              </small>
-            </label>
-            <button
-              disabled={
-                !file ||
-                Boolean(unavailableFormat) ||
-                busy ||
-                selectedIsAnalyzed
-              }
-            >
-              {busy
-                ? "Analyzing…"
-                : unavailableFormat
-                  ? "Format unavailable"
-                  : conversationChoices.length > 0 && !selectedConversationId
-                    ? "Choose a group chat"
-                    : selectedIsAnalyzed
-                      ? "Already saved"
-                      : conversationChoices.length > 0
-                        ? "Analyze selected chat"
-                        : "Analyze chat"}
-            </button>
-          </form>
-          {busy && (
-            <div className="progress-panel">
-              <div className="progress-heading">
-                <strong>{progressStage}</strong>
-                <span>{progress}%</span>
+              <div className="locked-format" aria-disabled="true">
+                <span>CSV file</span>
+                <span className="coming-soon-pill">Coming soon · locked</span>
               </div>
-              <progress max="100" value={progress} />
-            </div>
-          )}
-          {conversationChoices.length > 0 && (
-            <div className="conversation-picker">
-              <label>
-                Search conversations
-                <div className="search-input-wrapper">
-                  <input
-                    type="search"
-                    placeholder="Click to browse or type a group name…"
-                    value={conversationSearch}
-                    onFocus={() => setConversationSearchActive(true)}
-                    onBlur={() => {
-                      // Delay so click handlers on results fire first.
-                      window.setTimeout(() => {
-                        setConversationSearchActive(false);
-                      }, 150);
-                    }}
-                    onChange={(event) => {
-                      setConversationSearchActive(true);
-                      setConversationSearch(event.target.value);
-                    }}
-                  />
-                  {selectedConversationId && (
-                    <button
-                      type="button"
-                      className="search-clear-btn"
-                      onClick={() => {
-                        setConversationSearchActive(true);
-                        setSelectedConversationId("");
-                        setConversationSearch("");
-                      }}
-                      aria-label="Clear selection"
+              <p className="privacy">
+                Currently supported: iMessage <code>chat.db</code>,{" "}
+                <code>.sqlite</code>, or <code>.sqlite3</code> files. Instagram
+                and CSV uploads are temporarily unavailable.
+              </p>
+            </section>
+            <section className="panel">
+              <form onSubmit={submit} className="upload-form">
+                <div className="form-fields">
+                  <label>
+                    Chat export
+                    <input
+                      type="file"
+                      accept=".json,.csv,.sqlite,.sqlite3,.db"
+                      onChange={(event) =>
+                        onFileChange(event.target.files?.[0] ?? null)
+                      }
+                    />
+                    <small className="field-help">
+                      Upload an iMessage chat.db file.
+                    </small>
+                  </label>
+                  <label>
+                    Timezone for timing metrics
+                    <select
+                      value={timezone}
+                      onChange={(event) => setTimezone(event.target.value)}
                     >
-                      ✕
-                    </button>
-                  )}
+                      {TIMEZONE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <small className="field-help">
+                      Used for time-based superlatives.
+                    </small>
+                  </label>
                 </div>
-              </label>
-              {(() => {
-                const selectedChoice = selectedConversationId
-                  ? [...conversationChoices, ...visibleChoices].find(
-                      (c) => c.conversation_id === selectedConversationId,
-                    )
-                  : null;
-                const showDropdown = conversationSearchActive || selectedChoice;
-                if (!showDropdown) {
-                  return (
-                    <p className="privacy">
-                      Click the search bar to browse all{" "}
-                      {conversationChoices.length} conversations.
-                    </p>
-                  );
-                }
-                return (
-                  <>
-                    {selectedChoice && !conversationSearchActive && (
-                      <div className="conversation-results" role="listbox">
+                {unavailableFormat && (
+                  <div className="under-construction upload-warning">
+                    <strong>
+                      {unavailableFormat} uploads are not available yet
+                    </strong>
+                    <span>
+                      Please select an iMessage SQLite file to continue.
+                    </span>
+                  </div>
+                )}
+                <button
+                  disabled={
+                    !file ||
+                    Boolean(unavailableFormat) ||
+                    busy ||
+                    selectedIsAnalyzed
+                  }
+                >
+                  {busy
+                    ? "Analyzing\u2026"
+                    : unavailableFormat
+                      ? "Format unavailable"
+                      : conversationChoices.length > 0 &&
+                          !selectedConversationId
+                        ? "Choose a group chat"
+                        : selectedIsAnalyzed
+                          ? "Already saved"
+                          : conversationChoices.length > 0
+                            ? "Analyze selected chat"
+                            : "Analyze chat"}
+                </button>
+              </form>
+              {busy && (
+                <div className="progress-panel">
+                  <div className="progress-heading">
+                    <strong>{progressStage}</strong>
+                    <span>{progress}%</span>
+                  </div>
+                  <progress max="100" value={progress} />
+                </div>
+              )}
+              {conversationChoices.length > 0 && (
+                <div className="conversation-picker">
+                  <label>
+                    Search conversations
+                    <div className="search-input-wrapper">
+                      <input
+                        type="search"
+                        placeholder="Click to browse or type a group name…"
+                        value={conversationSearch}
+                        onFocus={() => setConversationSearchActive(true)}
+                        onBlur={() => {
+                          // Delay so click handlers on results fire first.
+                          window.setTimeout(() => {
+                            setConversationSearchActive(false);
+                          }, 150);
+                        }}
+                        onChange={(event) => {
+                          setConversationSearchActive(true);
+                          setConversationSearch(event.target.value);
+                        }}
+                      />
+                      {selectedConversationId && (
                         <button
                           type="button"
-                          role="option"
-                          aria-selected
-                          className="conversation-result selected collapsed-selected"
-                          onClick={() => setConversationSearchActive(true)}
+                          className="search-clear-btn"
+                          onClick={() => {
+                            setConversationSearchActive(true);
+                            setSelectedConversationId("");
+                            setConversationSearch("");
+                          }}
+                          aria-label="Clear selection"
                         >
-                          <span>
-                            <strong>
-                              {selectedChoice.title}
-                              {analyzedChoiceIds.has(selectedChoice.conversation_id) && (
-                                <span className="analyzed-badge">
-                                  Previously analyzed
-                                </span>
-                              )}
-                            </strong>
-                            <small>
-                              {selectedChoice.participant_count} people ·{" "}
-                              {selectedChoice.message_count} messages
-                              {" \u00b7 Click to change"}
-                            </small>
-                          </span>
+                          ✕
                         </button>
-                      </div>
-                    )}
-                    {conversationSearchActive && (
+                      )}
+                    </div>
+                  </label>
+                  {(() => {
+                    const selectedChoice = selectedConversationId
+                      ? [...conversationChoices, ...visibleChoices].find(
+                          (c) => c.conversation_id === selectedConversationId,
+                        )
+                      : null;
+                    const showDropdown =
+                      conversationSearchActive || selectedChoice;
+                    if (!showDropdown) {
+                      return (
+                        <p className="privacy">
+                          Click the search bar to browse all{" "}
+                          {conversationChoices.length} conversations.
+                        </p>
+                      );
+                    }
+                    return (
                       <>
-                        <div
-                          className="conversation-results"
-                          role="listbox"
-                          aria-label="Conversations"
-                        >
-                          {selectedConversationId ? (
-                            (() => {
-                              const selected = visibleChoices.find(
-                                (c) =>
-                                  c.conversation_id === selectedConversationId,
-                              );
-                              if (!selected) return null;
-                              const isAnalyzed = analyzedChoiceIds.has(
-                                selected.conversation_id,
-                              );
-                              return (
-                                <button
-                                  type="button"
-                                  role="option"
-                                  aria-selected
-                                  className="conversation-result selected"
-                                  onClick={() => {
-                                    setConversationSearchActive(true);
-                                    setSelectedConversationId("");
-                                    setConversationSearch("");
-                                  }}
-                                >
-                                  <span>
-                                    <strong>
-                                      {selected.title}
-                                      {isAnalyzed && (
-                                        <span className="analyzed-badge">
-                                          Previously analyzed
+                        {selectedChoice && !conversationSearchActive && (
+                          <div className="conversation-results" role="listbox">
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected
+                              className="conversation-result selected collapsed-selected"
+                              onClick={() => setConversationSearchActive(true)}
+                            >
+                              <span>
+                                <strong>
+                                  {selectedChoice.title}
+                                  {analyzedChoiceIds.has(
+                                    selectedChoice.conversation_id,
+                                  ) && (
+                                    <span className="analyzed-badge">
+                                      Previously analyzed
+                                    </span>
+                                  )}
+                                </strong>
+                                <small>
+                                  {selectedChoice.participant_count} people ·{" "}
+                                  {selectedChoice.message_count} messages
+                                  {" \u00b7 Click to change"}
+                                </small>
+                              </span>
+                            </button>
+                          </div>
+                        )}
+                        {conversationSearchActive && (
+                          <>
+                            <div
+                              className="conversation-results"
+                              role="listbox"
+                              aria-label="Conversations"
+                            >
+                              {selectedConversationId
+                                ? (() => {
+                                    const selected = visibleChoices.find(
+                                      (c) =>
+                                        c.conversation_id ===
+                                        selectedConversationId,
+                                    );
+                                    if (!selected) return null;
+                                    const isAnalyzed = analyzedChoiceIds.has(
+                                      selected.conversation_id,
+                                    );
+                                    return (
+                                      <button
+                                        type="button"
+                                        role="option"
+                                        aria-selected
+                                        className="conversation-result selected"
+                                        onClick={() => {
+                                          setConversationSearchActive(true);
+                                          setSelectedConversationId("");
+                                          setConversationSearch("");
+                                        }}
+                                      >
+                                        <span>
+                                          <strong>
+                                            {selected.title}
+                                            {isAnalyzed && (
+                                              <span className="analyzed-badge">
+                                                Previously analyzed
+                                              </span>
+                                            )}
+                                          </strong>
+                                          <small>
+                                            {selected.participant_names?.length
+                                              ? selected.participant_names.join(
+                                                  ", ",
+                                                )
+                                              : selected.is_named
+                                                ? "Named group or conversation"
+                                                : "Other conversation"}
+                                          </small>
                                         </span>
-                                      )}
-                                    </strong>
-                                    <small>
-                                      {selected.participant_names?.length
-                                        ? selected.participant_names.join(", ")
-                                        : selected.is_named
-                                          ? "Named group or conversation"
-                                          : "Other conversation"}
-                                    </small>
-                                  </span>
-                                  <span className="conversation-stats">
-                                    {selected.participant_count} people ·{" "}
-                                    {selected.message_count} messages
-                                    {isAnalyzed && (
-                                      <span className="update-hint">
-                                        \nClick Analyze to update
-                                      </span>
-                                    )}
-                                  </span>
-                                </button>
-                              );
-                            })()
-                          ) : (
-                            visibleChoices.map((choice) => {
-                              const isAnalyzed = analyzedChoiceIds.has(
-                                choice.conversation_id,
-                              );
-                              return (
-                                <button
-                                  type="button"
-                                  role="option"
-                                  aria-selected={false}
-                                  disabled={isAnalyzed}
-                                  className={`conversation-result${isAnalyzed ? " previously-analyzed" : ""}`}
-                                  onClick={() => {
-                                    setConversationSearchActive(true);
-                                    setSelectedConversationId(
+                                        <span className="conversation-stats">
+                                          {selected.participant_count} people ·{" "}
+                                          {selected.message_count} messages
+                                          {isAnalyzed && (
+                                            <span className="update-hint">
+                                              \nClick Analyze to update
+                                            </span>
+                                          )}
+                                        </span>
+                                      </button>
+                                    );
+                                  })()
+                                : visibleChoices.map((choice) => {
+                                    const isAnalyzed = analyzedChoiceIds.has(
                                       choice.conversation_id,
                                     );
-                                  }}
-                                  key={choice.conversation_id}
-                                >
-                                  <span>
-                                    <strong>
-                                      {choice.title}
-                                      {isAnalyzed && (
-                                        <span className="analyzed-badge">
-                                          Previously analyzed
+                                    return (
+                                      <button
+                                        type="button"
+                                        role="option"
+                                        aria-selected={false}
+                                        disabled={isAnalyzed}
+                                        className={`conversation-result${isAnalyzed ? " previously-analyzed" : ""}`}
+                                        onClick={() => {
+                                          setConversationSearchActive(true);
+                                          setSelectedConversationId(
+                                            choice.conversation_id,
+                                          );
+                                        }}
+                                        key={choice.conversation_id}
+                                      >
+                                        <span>
+                                          <strong>
+                                            {choice.title}
+                                            {isAnalyzed && (
+                                              <span className="analyzed-badge">
+                                                Previously analyzed
+                                              </span>
+                                            )}
+                                          </strong>
+                                          <small>
+                                            {choice.participant_names?.length
+                                              ? choice.participant_names.join(
+                                                  ", ",
+                                                )
+                                              : choice.is_named
+                                                ? "Named group or conversation"
+                                                : "Other conversation"}
+                                          </small>
                                         </span>
-                                      )}
-                                    </strong>
-                                    <small>
-                                      {choice.participant_names?.length
-                                        ? choice.participant_names.join(", ")
-                                        : choice.is_named
-                                          ? "Named group or conversation"
-                                          : "Other conversation"}
-                                    </small>
-                                  </span>
-                                  <span className="conversation-stats">
-                                    {choice.participant_count} people ·{" "}
-                                    {choice.message_count} messages
-                                  </span>
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
-                        {!selectedConversationId && (
-                          <p className="privacy">
-                            Showing {visibleChoices.length} of{" "}
-                            {conversationChoices.length} conversations. Named
-                            groups are listed first; click a conversation to
-                            select or update it.
-                          </p>
+                                        <span className="conversation-stats">
+                                          {choice.participant_count} people ·{" "}
+                                          {choice.message_count} messages
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                            </div>
+                            {!selectedConversationId && (
+                              <p className="privacy">
+                                Showing {visibleChoices.length} of{" "}
+                                {conversationChoices.length} conversations.
+                                Named groups are listed first; click a
+                                conversation to select or update it.
+                              </p>
+                            )}
+                            {visibleChoices.length === 0 &&
+                              !selectedConversationId && (
+                                <p className="error">
+                                  No conversations match that search.
+                                </p>
+                              )}
+                          </>
                         )}
-                        {visibleChoices.length === 0 &&
-                          !selectedConversationId && (
-                            <p className="error">
-                              No conversations match that search.
-                            </p>
-                          )}
                       </>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          )}
-          <p className="privacy">
-            With Google sign-in, reports are saved to your private account
-            history.
-          </p>
-          {error && <p className="error">{error}</p>}
-        </section>
-        </>
+                    );
+                  })()}
+                </div>
+              )}
+              <p className="privacy">
+                With Google sign-in, reports are saved to your private account
+                history.
+              </p>
+              {error && <p className="error">{error}</p>}
+            </section>
+          </>
         )}
         {displayedReport && (
           <section>

@@ -27,15 +27,15 @@ body{margin:0;background:var(--paper);color:var(--ink);font-family:ui-sans-serif
 .sidebar-note{margin-top:auto}
 .content{flex:1;overflow-y:auto;min-width:0;padding-left:24px}
 .hero{max-width:680px;padding:64px 44px 0}
-.eyebrow{color:var(--purple);font-size:12px;font-weight:800;letter-spacing:.16em}
+.eyebrow{color:var(--purple);font-size:20px;font-weight:800;letter-spacing:.16em}
 .hero h1{font-size:clamp(40px,7vw,76px);line-height:.98;letter-spacing:-.06em;margin:16px 0}
 .lede{font-size:20px;color:var(--muted);line-height:1.5}
 .panel,.card,.summary{background:#fff;border:1px solid #ebe9f3;border-radius:22px;box-shadow:0 12px 35px #29204b0c}
 .panel{margin:34px 44px;padding:24px}
-.panel form{display:flex;gap:16px;align-items:end;flex-wrap:wrap}
+.upload-form{display:flex;flex-direction:column;gap:16px}.form-fields{display:flex;gap:16px;flex-wrap:wrap}.form-fields>label{flex:1 1 320px;min-width:0}
 .panel label{display:grid;gap:8px;font-weight:700}
-.panel input,.panel select{display:block;padding:11px;border:1px solid #d9d5e6;border-radius:10px;background:#fff}
-.panel button{border:0;border-radius:10px;background:var(--purple);color:#fff;padding:12px 18px;font-weight:800;cursor:pointer}
+.panel input,.panel select{display:block;padding:11px;border:1px solid #d9d5e6;border-radius:10px;background:#fff}.panel input[type=file]{padding:8px 16px 8px 8px}
+.panel button{border:0;border-radius:10px;background:var(--purple);color:#fff;padding:12px 18px;font-weight:800;cursor:pointer;white-space:nowrap}
 .panel button:disabled{opacity:.5}
 .field-help{display:block;color:var(--muted);font-size:12px;font-weight:400;max-width:330px}
 .under-construction{display:grid;gap:4px;margin:14px 0;padding:12px 14px;border:1px solid #eadca4;border-radius:12px;background:#fff9df;color:#705d12;font-size:13px}
@@ -61,3 +61,5 @@ h2{font-size:28px}
 .card h3{font-size:25px;margin:28px 0 8px}
 .card p{color:var(--muted)}
 @media(max-width:760px){.app-layout{display:block;height:auto;overflow:visible}.sidebar{width:100%;height:auto;overflow:visible}.sidebar-note{margin-top:24px}.content{overflow:visible}.panel{margin:34px 20px}.hero{padding:38px 20px 0}.summary{margin:0 20px 38px}.instructions-panel{margin:34px 20px}}
+
+.cursor{animation:blink 1s step-end infinite;font-weight:300}@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
