@@ -358,6 +358,7 @@ export default function Home() {
   const [activeSavedReportId, setActiveSavedReportId] = useState<string | null>(
     null,
   );
+  const [homeView, setHomeView] = useState(true);
   const [participantNames, setParticipantNames] = useState<
     Record<string, string>
   >({});
@@ -426,6 +427,9 @@ export default function Home() {
     await createClient().auth.signOut();
     setUser(null);
     setSavedReports(readLocalReports());
+    setReport(null);
+    setActiveSavedReportId(null);
+    setParticipantNames({});
   }
 
   async function saveReport(nextReport: Report) {
@@ -587,6 +591,7 @@ export default function Home() {
           setSlideIndex(0);
           setWinnerRevealed(false);
           setActiveSavedReportId(await saveReport(current.report));
+          setHomeView(false);
           finished = true;
         } else await new Promise((resolve) => window.setTimeout(resolve, 450));
       }
@@ -627,11 +632,22 @@ export default function Home() {
     setError("");
   }
 
+  const analyzedTitles = new Set(
+    savedReports.map((r) => r.title.toLowerCase()),
+  );
   const visibleChoices = conversationChoices.filter((choice) =>
     choice.title
       .toLowerCase()
       .includes(conversationSearch.toLowerCase().trim()),
   );
+  const analyzedChoiceIds = new Set(
+    visibleChoices
+      .filter((c) => analyzedTitles.has(c.title.toLowerCase()))
+      .map((c) => c.conversation_id),
+  );
+  const selectedIsAnalyzed =
+    selectedConversationId !== "" && analyzedChoiceIds.has(selectedConversationId);
+
   const displayedReport = report
     ? withParticipantNames(report, participantNames)
     : null;
@@ -697,6 +713,18 @@ export default function Home() {
             </button>
           )}
         </div>
+        <button
+          className={`sidebar-tab${homeView ? " active" : ""}`}
+          onClick={() => {
+            setHomeView(true);
+            setActiveSavedReportId(null);
+            setReport(null);
+            setParticipantNames({});
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{verticalAlign: "-2px", marginRight: 6}}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Home
+        </button>
         <div className="history-heading">
           <span>Saved group chats</span>
           <span className="count">{savedReports.length}</span>
@@ -711,6 +739,7 @@ export default function Home() {
               <div className="history-item" key={item.id}>
                 <button
                   onClick={() => {
+                    setHomeView(false);
                     setReport(item.report);
                     setParticipantNames(storedParticipantNames(item.report));
                     setExpandedSuperlative(null);
@@ -743,6 +772,8 @@ export default function Home() {
         </p>
       </aside>
       <main className="content">
+        {homeView && (
+        <>
         <section className="hero">
           <p className="eyebrow">CHAT STATS</p>
           <h1>Find out who really runs the group chat.</h1>
@@ -836,16 +867,25 @@ export default function Home() {
                 internally.
               </small>
             </label>
-            <button disabled={!file || Boolean(unavailableFormat) || busy}>
+            <button
+              disabled={
+                !file ||
+                Boolean(unavailableFormat) ||
+                busy ||
+                selectedIsAnalyzed
+              }
+            >
               {busy
                 ? "Analyzing…"
                 : unavailableFormat
                   ? "Format unavailable"
                   : conversationChoices.length > 0 && !selectedConversationId
                     ? "Choose a group chat"
-                    : conversationChoices.length > 0
-                      ? "Analyze selected chat"
-                      : "Analyze chat"}
+                    : selectedIsAnalyzed
+                      ? "Already saved"
+                      : conversationChoices.length > 0
+                        ? "Analyze selected chat"
+                        : "Analyze chat"}
             </button>
           </form>
           {busy && (
@@ -861,73 +901,206 @@ export default function Home() {
             <div className="conversation-picker">
               <label>
                 Search conversations
-                <input
-                  type="search"
-                  placeholder="Click to browse or type a group name…"
-                  value={conversationSearch}
-                  onFocus={() => setConversationSearchActive(true)}
-                  onChange={(event) => {
-                    setConversationSearchActive(true);
-                    setConversationSearch(event.target.value);
-                  }}
-                />
-              </label>
-              {conversationSearchActive ? (
-                <>
-                  <div
-                    className="conversation-results"
-                    role="listbox"
-                    aria-label="Conversations"
-                  >
-                    {visibleChoices.map((choice) => (
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={
-                          selectedConversationId === choice.conversation_id
-                        }
-                        className={
-                          selectedConversationId === choice.conversation_id
-                            ? "conversation-result selected"
-                            : "conversation-result"
-                        }
-                        onClick={() =>
-                          setSelectedConversationId(choice.conversation_id)
-                        }
-                        key={choice.conversation_id}
-                      >
-                        <span>
-                          <strong>{choice.title}</strong>
-                          <small>
-                            {choice.participant_names?.length
-                              ? choice.participant_names.join(", ")
-                              : choice.is_named
-                                ? "Named group or conversation"
-                                : "Other conversation"}
-                          </small>
-                        </span>
-                        <span className="conversation-stats">
-                          {choice.participant_count} people ·{" "}
-                          {choice.message_count} messages
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="privacy">
-                    Showing {visibleChoices.length} of{" "}
-                    {conversationChoices.length} conversations. Named groups are
-                    listed first; click a conversation to select it.
-                  </p>
-                  {visibleChoices.length === 0 && (
-                    <p className="error">No conversations match that search.</p>
+                <div className="search-input-wrapper">
+                  <input
+                    type="search"
+                    placeholder="Click to browse or type a group name…"
+                    value={conversationSearch}
+                    onFocus={() => setConversationSearchActive(true)}
+                    onBlur={() => {
+                      // Delay so click handlers on results fire first.
+                      window.setTimeout(() => {
+                        setConversationSearchActive(false);
+                      }, 150);
+                    }}
+                    onChange={(event) => {
+                      setConversationSearchActive(true);
+                      setConversationSearch(event.target.value);
+                    }}
+                  />
+                  {selectedConversationId && (
+                    <button
+                      type="button"
+                      className="search-clear-btn"
+                      onClick={() => {
+                        setConversationSearchActive(true);
+                        setSelectedConversationId("");
+                        setConversationSearch("");
+                      }}
+                      aria-label="Clear selection"
+                    >
+                      ✕
+                    </button>
                   )}
-                </>
-              ) : (
-                <p className="privacy">
-                  Click the search bar to browse all{" "}
-                  {conversationChoices.length} conversations.
-                </p>
-              )}
+                </div>
+              </label>
+              {(() => {
+                const selectedChoice = selectedConversationId
+                  ? [...conversationChoices, ...visibleChoices].find(
+                      (c) => c.conversation_id === selectedConversationId,
+                    )
+                  : null;
+                const showDropdown = conversationSearchActive || selectedChoice;
+                if (!showDropdown) {
+                  return (
+                    <p className="privacy">
+                      Click the search bar to browse all{" "}
+                      {conversationChoices.length} conversations.
+                    </p>
+                  );
+                }
+                return (
+                  <>
+                    {selectedChoice && !conversationSearchActive && (
+                      <div className="conversation-results" role="listbox">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected
+                          className="conversation-result selected collapsed-selected"
+                          onClick={() => setConversationSearchActive(true)}
+                        >
+                          <span>
+                            <strong>
+                              {selectedChoice.title}
+                              {analyzedChoiceIds.has(selectedChoice.conversation_id) && (
+                                <span className="analyzed-badge">
+                                  Previously analyzed
+                                </span>
+                              )}
+                            </strong>
+                            <small>
+                              {selectedChoice.participant_count} people ·{" "}
+                              {selectedChoice.message_count} messages
+                              {" \u00b7 Click to change"}
+                            </small>
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                    {conversationSearchActive && (
+                      <>
+                        <div
+                          className="conversation-results"
+                          role="listbox"
+                          aria-label="Conversations"
+                        >
+                          {selectedConversationId ? (
+                            (() => {
+                              const selected = visibleChoices.find(
+                                (c) =>
+                                  c.conversation_id === selectedConversationId,
+                              );
+                              if (!selected) return null;
+                              const isAnalyzed = analyzedChoiceIds.has(
+                                selected.conversation_id,
+                              );
+                              return (
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected
+                                  className="conversation-result selected"
+                                  onClick={() => {
+                                    setConversationSearchActive(true);
+                                    setSelectedConversationId("");
+                                    setConversationSearch("");
+                                  }}
+                                >
+                                  <span>
+                                    <strong>
+                                      {selected.title}
+                                      {isAnalyzed && (
+                                        <span className="analyzed-badge">
+                                          Previously analyzed
+                                        </span>
+                                      )}
+                                    </strong>
+                                    <small>
+                                      {selected.participant_names?.length
+                                        ? selected.participant_names.join(", ")
+                                        : selected.is_named
+                                          ? "Named group or conversation"
+                                          : "Other conversation"}
+                                    </small>
+                                  </span>
+                                  <span className="conversation-stats">
+                                    {selected.participant_count} people ·{" "}
+                                    {selected.message_count} messages
+                                    {isAnalyzed && (
+                                      <span className="update-hint">
+                                        \nClick Analyze to update
+                                      </span>
+                                    )}
+                                  </span>
+                                </button>
+                              );
+                            })()
+                          ) : (
+                            visibleChoices.map((choice) => {
+                              const isAnalyzed = analyzedChoiceIds.has(
+                                choice.conversation_id,
+                              );
+                              return (
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={false}
+                                  disabled={isAnalyzed}
+                                  className={`conversation-result${isAnalyzed ? " previously-analyzed" : ""}`}
+                                  onClick={() => {
+                                    setConversationSearchActive(true);
+                                    setSelectedConversationId(
+                                      choice.conversation_id,
+                                    );
+                                  }}
+                                  key={choice.conversation_id}
+                                >
+                                  <span>
+                                    <strong>
+                                      {choice.title}
+                                      {isAnalyzed && (
+                                        <span className="analyzed-badge">
+                                          Previously analyzed
+                                        </span>
+                                      )}
+                                    </strong>
+                                    <small>
+                                      {choice.participant_names?.length
+                                        ? choice.participant_names.join(", ")
+                                        : choice.is_named
+                                          ? "Named group or conversation"
+                                          : "Other conversation"}
+                                    </small>
+                                  </span>
+                                  <span className="conversation-stats">
+                                    {choice.participant_count} people ·{" "}
+                                    {choice.message_count} messages
+                                  </span>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                        {!selectedConversationId && (
+                          <p className="privacy">
+                            Showing {visibleChoices.length} of{" "}
+                            {conversationChoices.length} conversations. Named
+                            groups are listed first; click a conversation to
+                            select or update it.
+                          </p>
+                        )}
+                        {visibleChoices.length === 0 &&
+                          !selectedConversationId && (
+                            <p className="error">
+                              No conversations match that search.
+                            </p>
+                          )}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
           <p className="privacy">
@@ -936,50 +1109,10 @@ export default function Home() {
           </p>
           {error && <p className="error">{error}</p>}
         </section>
+        </>
+        )}
         {displayedReport && (
           <section>
-            {participantsToName.length > 0 && (
-              <div className="panel names-panel">
-                <h2>Name participants</h2>
-                <p className="privacy">
-                  The export identifies people by phone number or email. Add
-                  names below so every card and leaderboard uses a friendly
-                  name. You can name yourself too. These labels stay in your
-                  saved report.
-                </p>
-                <div className="name-fields">
-                  {participantsToName.map((person) => (
-                    <label key={person.participant_id}>
-                      <span>
-                        {person.display_name === "Me"
-                          ? "You (currently shown as Me)"
-                          : person.display_name}
-                      </span>
-                      <input
-                        value={participantNames[person.participant_id] ?? ""}
-                        onChange={(event) =>
-                          setParticipantNames((current) => ({
-                            ...current,
-                            [person.participant_id]: event.target.value,
-                          }))
-                        }
-                        placeholder={
-                          person.display_name === "Me"
-                            ? "Enter your name"
-                            : "Enter a name"
-                        }
-                      />
-                    </label>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void applyParticipantNames()}
-                >
-                  Apply names
-                </button>
-              </div>
-            )}
             <div className="summary">
               <div>
                 <span>Conversation</span>
@@ -1161,6 +1294,48 @@ export default function Home() {
               The category and first-place position appear before the winner is
               revealed. Use the arrows or dots to move through the superlatives.
             </p>
+            {participantsToName.length > 0 && (
+              <div className="panel names-panel">
+                <h2>Name participants</h2>
+                <p className="privacy">
+                  The export identifies people by phone number or email. Add
+                  names below so every card and leaderboard uses a friendly
+                  name. You can name yourself too. These labels stay in your
+                  saved report.
+                </p>
+                <div className="name-fields">
+                  {participantsToName.map((person) => (
+                    <label key={person.participant_id}>
+                      <span>
+                        {person.display_name === "Me"
+                          ? "You (currently shown as Me)"
+                          : person.display_name}
+                      </span>
+                      <input
+                        value={participantNames[person.participant_id] ?? ""}
+                        onChange={(event) =>
+                          setParticipantNames((current) => ({
+                            ...current,
+                            [person.participant_id]: event.target.value,
+                          }))
+                        }
+                        placeholder={
+                          person.display_name === "Me"
+                            ? "Enter your name"
+                            : "Enter a name"
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void applyParticipantNames()}
+                >
+                  Apply names
+                </button>
+              </div>
+            )}
           </section>
         )}
       </main>
