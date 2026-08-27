@@ -1,3 +1,9 @@
+/* Slide content wrapper — clips the slide animation within the card. */
+.deck-slide-content {
+  position: relative;
+  overflow: hidden;
+}
+
 /* Keep navigation in real columns beside the presentation. */
 .deck-stage {
   display: grid;

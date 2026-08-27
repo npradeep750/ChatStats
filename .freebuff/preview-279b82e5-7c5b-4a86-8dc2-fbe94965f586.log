@@ -1,0 +1,51 @@
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /Users/naithikpradeep/package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * /Users/naithikpradeep/Desktop/Coding/Personal/ChatData/apps/web/package-lock.json
+
+   ▲ Next.js 15.5.23
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.1.7:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 4.5s
+ ✓ Compiled /middleware in 398ms (170 modules)
+ ○ Compiling / ...
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (107kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (259kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled / in 1710ms (690 modules)
+ GET / 200 in 1963ms
+ GET / 200 in 34ms
+ GET / 200 in 38ms
+ ✓ Compiled in 228ms (664 modules)
+ GET / 200 in 63ms
+ ✓ Compiled in 193ms (664 modules)
+ GET / 200 in 35ms
+ ✓ Compiled in 121ms (664 modules)
+ GET / 200 in 38ms
+ ✓ Compiled in 151ms (664 modules)
+ GET / 200 in 43ms
+ GET / 200 in 161ms
+ ✓ Compiled in 229ms (664 modules)
+ GET / 200 in 60ms
+ GET / 200 in 27ms
+ ✓ Compiled in 162ms (664 modules)
+ GET / 200 in 112ms
+ GET / 200 in 18ms
+ ✓ Compiled in 166ms (664 modules)
+ GET / 200 in 87ms
+ GET / 200 in 22ms
+ ✓ Compiled in 142ms (664 modules)
+ GET / 200 in 58ms
+ GET / 200 in 29ms
+ ✓ Compiled in 206ms (664 modules)
+ GET / 200 in 66ms
+ GET / 200 in 25ms
+ ✓ Compiled in 183ms (664 modules)
+ GET / 200 in 68ms
+ GET / 200 in 32ms
+ GET / 200 in 216ms
+ GET / 200 in 90ms

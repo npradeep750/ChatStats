@@ -231,6 +231,28 @@ const superlativeDescriptions: Record<string, string> = {
 
 const leaderboardNames: Record<string, string> = { comedian: "humor" };
 
+function useAnimatedCount(target: number, duration = 800) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    if (target === 0) {
+      setDisplay(0);
+      return;
+    }
+    const start = performance.now();
+    let raf: number;
+    function tick(now: number) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(eased * target));
+      if (progress < 1) raf = requestAnimationFrame(tick);
+    }
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return display;
+}
+
 function leaderboardRows(nextReport: Report, key: string): Ranking[] {
   const source = nextReport.leaderboards?.[leaderboardNames[key] ?? key];
   const rawRows =
@@ -317,7 +339,7 @@ function rankingDetail(key: string, row: Ranking) {
     const longWords = row.longest_message_words ?? 0;
     return (
       `${row.average_words ?? 0} average words · ${row.eligible_messages ?? 0} text messages · longest message ` +
-      (longWords > 0 ? `\n${longWords} words` : "")
+      (longWords > 0 ? `${longWords} words` : "")
     );
   }
   if (key === "conversation_starter")
@@ -343,6 +365,31 @@ function rankingDetail(key: string, row: Ranking) {
     return `${row.grammar_score ?? 0} grammar score · ${row.proper_punctuation_rate ?? 0}% punctuation · ${row.capitalization_rate ?? 0}% capitalization`;
 }
 
+function podiumPrimaryStat(key: string, row: Ranking): string {
+  if (key === "comedian") return `${row.ranking_score ?? row.score ?? 0} score`;
+  if (key === "double_texter") return `${row.rate ?? 0}% rate`;
+  if (key === "novelist") return `${row.average_words ?? 0} avg words`;
+  if (key === "conversation_starter") return `${row.ranking_score ?? 0} score`;
+  if (key === "night_owl" || key === "early_bird")
+    return `${Math.round((row.share ?? 0) * 100)}% share`;
+  if (key === "emoji_addict") return `${row.ranking_score ?? 0} score`;
+  if (key === "media_spammer") return `${row.ranking_score ?? 0} score`;
+  if (key === "quick_draw")
+    return row.median_reply_seconds != null
+      ? `${row.median_reply_seconds.toFixed(1)}s median`
+      : `${row.reply_count ?? 0} replies`;
+  if (key === "ghost") return `${row.message_count ?? 0} messages`;
+  if (key === "time_traveler")
+    return `${row.late_reply_count ?? 0} late returns`;
+  if (key === "grammar_police") return `${row.grammar_score ?? 0} score`;
+  return "";
+}
+
+function podiumPlacement(index: number, total: number): string {
+  const ordinals = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"];
+  return `${ordinals[index] ?? `${index + 1}th`} of ${total}`;
+}
+
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [timezone, setTimezone] = useState("UTC");
@@ -359,6 +406,7 @@ export default function Home() {
     null,
   );
   const [homeView, setHomeView] = useState(true);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [participantNames, setParticipantNames] = useState<
     Record<string, string>
   >({});
@@ -367,6 +415,14 @@ export default function Home() {
   );
   const [slideIndex, setSlideIndex] = useState(0);
   const [winnerRevealed, setWinnerRevealed] = useState(false);
+  const [slideDirection, setSlideDirection] = useState<"left" | "right">(
+    "right",
+  );
+
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [viewedSlides, setViewedSlides] = useState<Set<number>>(new Set([0]));
+  const [noteDismissed, setNoteDismissed] = useState(false);
+  const [podiumRevealed, setPodiumRevealed] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [typedText, setTypedText] = useState("");
   const [error, setError] = useState("");
@@ -603,6 +659,10 @@ export default function Home() {
           setExpandedSuperlative(null);
           setSlideIndex(0);
           setWinnerRevealed(false);
+          setPodiumRevealed(false);
+          setAutoPlay(false);
+          setViewedSlides(new Set([0]));
+          setNoteDismissed(false);
           setActiveSavedReportId(await saveReport(current.report));
           setHomeView(false);
           finished = true;
@@ -642,6 +702,7 @@ export default function Home() {
     setExpandedSuperlative(null);
     setSlideIndex(0);
     setWinnerRevealed(false);
+    setPodiumRevealed(false);
     setError("");
   }
 
@@ -681,6 +742,11 @@ export default function Home() {
   );
   const activeSlide = availableSuperlatives[activeSlideIndex];
   const activeWinner = activeSlide?.[1] ?? null;
+  const podiumRows = displayedReport
+    ? leaderboardRows(displayedReport, activeSlide[0])
+    : [];
+  const podium2nd = podiumRows[1] ?? null;
+  const podium3rd = podiumRows[2] ?? null;
   const humorLeaderboard = displayedReport?.leaderboards?.humor;
   const totalPositiveReactions =
     humorLeaderboard &&
@@ -695,12 +761,55 @@ export default function Home() {
           0,
         );
 
+  const animMessages = useAnimatedCount(
+    displayedReport?.conversation_summary.message_count ?? 0,
+  );
+  const animParticipants = useAnimatedCount(
+    displayedReport?.conversation_summary.participant_count ?? 0,
+  );
+  const animReactions = useAnimatedCount(totalPositiveReactions);
+
   useEffect(() => {
     if (!activeSlide) return;
     setWinnerRevealed(false);
-    const revealTimer = window.setTimeout(() => setWinnerRevealed(true), 1700);
+    setPodiumRevealed(false);
+    if (!autoPlay) return;
+    const revealTimer = window.setTimeout(() => setWinnerRevealed(true), 2500);
     return () => window.clearTimeout(revealTimer);
-  }, [report, activeSlide?.[0]]);
+  }, [report, activeSlide?.[0], autoPlay]);
+
+  useEffect(() => {
+    if (!winnerRevealed) {
+      setPodiumRevealed(false);
+      return;
+    }
+    if (!autoPlay) return;
+    const podiumTimer = window.setTimeout(() => setPodiumRevealed(true), 2000);
+    return () => window.clearTimeout(podiumTimer);
+  }, [winnerRevealed, autoPlay]);
+
+  useEffect(() => {
+    if (!autoPlay || !availableSuperlatives.length) return;
+    const interval = window.setInterval(() => {
+      setSlideIndex((current) => {
+        if (current >= availableSuperlatives.length - 1) return 0;
+        return current + 1;
+      });
+      setSlideDirection("right");
+      setExpandedSuperlative(null);
+      setWinnerRevealed(false);
+      setPodiumRevealed(false);
+    }, 12000);
+    return () => window.clearInterval(interval);
+  }, [autoPlay, availableSuperlatives.length]);
+
+  useEffect(() => {
+    if (winnerRevealed && !noteDismissed) setNoteDismissed(true);
+  }, [winnerRevealed, noteDismissed]);
+
+  useEffect(() => {
+    setViewedSlides((prev) => new Set(prev).add(activeSlideIndex));
+  }, [activeSlideIndex]);
 
   return (
     <div className="app-layout">
@@ -710,17 +819,29 @@ export default function Home() {
         </div>
         <div className="account">
           {user ? (
-            <>
-              <div className="user-line">
+            <div className="account-wrapper">
+              <button
+                className="user-line"
+                onClick={() => setAccountMenuOpen(!accountMenuOpen)}
+              >
                 <span className="avatar">
                   {(user.email ?? "?")[0].toUpperCase()}
                 </span>
                 <span title={user.email ?? "Signed in"}>{user.email}</span>
-              </div>
-              <button className="text-button" onClick={signOut}>
-                Sign out
               </button>
-            </>
+              {accountMenuOpen && (
+                <div className="account-dropdown">
+                  <button onClick={signOut}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                      <polyline points="16 17 21 12 16 7"/>
+                      <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <button className="google-button" onClick={signInWithGoogle}>
               Continue with Google
@@ -765,6 +886,7 @@ export default function Home() {
             savedReports.map((item) => (
               <div className="history-item" key={item.id}>
                 <button
+                  className={item.id === activeSavedReportId ? "active-chat" : undefined}
                   onClick={() => {
                     setHomeView(false);
                     setReport(item.report);
@@ -772,6 +894,10 @@ export default function Home() {
                     setExpandedSuperlative(null);
                     setSlideIndex(0);
                     setWinnerRevealed(false);
+                    setPodiumRevealed(false);
+                    setAutoPlay(false);
+                    setViewedSlides(new Set([0]));
+                    setNoteDismissed(false);
                     setActiveSavedReportId(item.id);
                   }}
                 >
@@ -851,6 +977,7 @@ export default function Home() {
                 <span>CSV file</span>
                 <span className="coming-soon-pill">Coming soon · locked</span>
               </div>
+              <hr className="format-divider" />
               <p className="privacy">
                 Currently supported: iMessage <code>chat.db</code>,{" "}
                 <code>.sqlite</code>, or <code>.sqlite3</code> files. Instagram
@@ -1160,167 +1287,316 @@ export default function Home() {
               </div>
               <div>
                 <span>Messages</span>
-                <strong>
-                  {displayedReport.conversation_summary.message_count}
-                </strong>
+                <strong>{animMessages}</strong>
               </div>
               <div>
                 <span>Participants</span>
-                <strong>
-                  {displayedReport.conversation_summary.participant_count}
-                </strong>
+                <strong>{animParticipants}</strong>
               </div>
               <div>
                 <span>Positive reactions</span>
-                <strong>{totalPositiveReactions}</strong>
+                <strong>{animReactions}</strong>
               </div>
             </div>
             {activeSlide && activeWinner && (
               <>
-                <div className="deck-counter">
-                  SUPERLATIVE {activeSlideIndex + 1} OF{" "}
-                  {availableSuperlatives.length}
+                <div className="deck-counter-row">
+                  <div className="deck-counter">
+                    SUPERLATIVE {activeSlideIndex + 1} OF{" "}
+                    {availableSuperlatives.length}
+                  </div>
+                  <button
+                    type="button"
+                    className="autoplay-toggle"
+                    onClick={() => setAutoPlay((p) => !p)}
+                    aria-label={
+                      autoPlay ? "Pause auto-advance" : "Start auto-advance"
+                    }
+                    title={autoPlay ? "Pause slideshow" : "Auto-advance slides"}
+                  >
+                    {autoPlay ? (
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <rect x="6" y="4" width="4" height="16" rx="1" />
+                        <rect x="14" y="4" width="4" height="16" rx="1" />
+                      </svg>
+                    ) : (
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <polygon points="5,3 19,12 5,21" />
+                      </svg>
+                    )}
+                    <span>{autoPlay ? "Pause" : "Play"}</span>
+                  </button>
                 </div>
                 <div className="deck-stage">
-                  <div className="superlative-deck">
-                    <div className="deck-intro">
-                      <span className="deck-category">
-                        {titleLabels[activeSlide[0]] ?? activeSlide[0]}
-                      </span>
-                      <p>
-                        {superlativeDescriptions[activeSlide[0]] ??
-                          "A playful group-chat ranking based on message activity."}
-                      </p>
-                    </div>
+                  <div className={`superlative-deck${podiumRevealed ? " podium-deck" : ""}`}>
                     <div
-                      className={
-                        winnerRevealed ? "deck-winner revealed" : "deck-winner"
-                      }
+                      key={`${activeSlide[0]}-${activeSlideIndex}`}
+                      className="deck-slide-content"
+                      data-direction={slideDirection}
                     >
-                      <span className="winner-label">1ST PLACE</span>
-                      {!winnerRevealed ? (
-                        <>
-                          <div className="winner-hidden">???</div>
-                          <p className="winner-tease">Revealing the winner…</p>
-                        </>
-                      ) : (
-                        <>
-                          <h2 className="winner-name">
-                            {activeWinner.participant}
-                          </h2>
-                          <p>{rankingDetail(activeSlide[0], activeWinner)}</p>
-                          <button
-                            type="button"
-                            className="expand-button"
-                            onClick={() =>
-                              setExpandedSuperlative(
-                                expandedSuperlative === activeSlide[0]
-                                  ? null
-                                  : activeSlide[0],
-                              )
-                            }
+                      <div className="deck-intro">
+                        <span className="deck-category">
+                          {titleLabels[activeSlide[0]] ?? activeSlide[0]}
+                        </span>
+                        <p>
+                          {superlativeDescriptions[activeSlide[0]] ??
+                            "A group-chat ranking based on message activity."}
+                        </p>
+                      </div>
+                      <div
+                        className={
+                          podiumRevealed
+                            ? "deck-winner podium"
+                            : winnerRevealed
+                              ? "deck-winner revealed"
+                              : "deck-winner"
+                        }
+                      >
+                        <button
+                          type="button"
+                          className="deck-arrow deck-arrow-left"
+                          aria-label="Previous superlative"
+                          disabled={activeSlideIndex === 0}
+                          onClick={() => {
+                            setAutoPlay(false);
+                            setSlideDirection("left");
+                            setSlideIndex((current) => Math.max(0, current - 1));
+                            setExpandedSuperlative(null);
+                            setWinnerRevealed(false);
+                            setPodiumRevealed(false);
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <button
+                          type="button"
+                          className="deck-arrow deck-arrow-right"
+                          aria-label="Next superlative"
+                          disabled={
+                            activeSlideIndex === availableSuperlatives.length - 1
+                          }
+                          onClick={() => {
+                            setAutoPlay(false);
+                            setSlideDirection("right");
+                            setSlideIndex((current) =>
+                              Math.min(
+                                availableSuperlatives.length - 1,
+                                current + 1,
+                              ),
+                            );
+                            setExpandedSuperlative(null);
+                            setWinnerRevealed(false);
+                            setPodiumRevealed(false);
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                        {!winnerRevealed && (
+                          <div
+                            className="winner-suspense"
+                            onClick={() => {
+                              if (!autoPlay) setWinnerRevealed(true);
+                            }}
+                            style={!autoPlay ? { cursor: "pointer" } : undefined}
                           >
-                            {expandedSuperlative === activeSlide[0]
-                              ? "Hide full ranking"
-                              : `Expand ranking · ${leaderboardRows(displayedReport, activeSlide[0]).length} members`}
-                          </button>
-                          {expandedSuperlative === activeSlide[0] && (
-                            <div className="ranking-panel">
-                              <strong>Full ranking</strong>
-                              {leaderboardRows(displayedReport, activeSlide[0])
-                                .length === 0 ? (
-                                <p className="privacy">
-                                  Detailed rankings are not available for this
-                                  saved report.
-                                </p>
-                              ) : (
-                                <ol>
-                                  {leaderboardRows(
-                                    displayedReport,
-                                    activeSlide[0],
-                                  ).map((row, index) => (
-                                    <li
-                                      key={
-                                        row.participant_id ??
-                                        `${activeSlide[0]}-${row.participant}-${index}`
-                                      }
-                                    >
-                                      <div>
-                                        <strong>{row.participant}</strong>
-                                        <span>
-                                          {rankingDetail(activeSlide[0], row)}
-                                        </span>
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ol>
-                              )}
+                            <div className="winner-skeleton">
+                              <div className="skeleton-bar skeleton-bar-lg" />
+                              <div className="skeleton-bar skeleton-bar-sm" />
+                              <div className="skeleton-bar skeleton-bar-md" />
                             </div>
-                          )}
-                        </>
-                      )}
+                            <p className="winner-tease">
+                              {autoPlay
+                                ? "Revealing the winner…"
+                                : "Tap to reveal the winner"}
+                            </p>
+                          </div>
+                        )}
+                        {winnerRevealed && (
+                          <div
+                            className="winner-spotlight"
+                            onClick={() => {
+                              if (!autoPlay && !podiumRevealed)
+                                setPodiumRevealed(true);
+                            }}
+                            style={!autoPlay && !podiumRevealed ? { cursor: "pointer" } : undefined}
+                          >
+                            <span className="winner-label">1ST PLACE</span>
+                            <h2 className="winner-name">
+                              {activeWinner.participant}
+                            </h2>
+                          </div>
+                        )}
+                        {podiumRevealed && (
+                          <div className="podium-section">
+                            <div className="podium">
+                              <div className="podium-bars">
+                                {podium2nd && (
+                                  <div className="podium-bar-unit">
+                                    <span className="podium-bar-name podium-name-silver">
+                                      <img src="/crown-silver.svg" alt="" className="podium-crown" /> {podium2nd.participant}
+                                    </span>
+                                    <div className="podium-bar podium-silver">
+                                      <div className="podium-placement-circle podium-circle-silver">
+                                        {podiumRows.length > 1 ? "2" : "-"}
+                                      </div>
+                                      <span className="podium-bar-outof">
+                                        out of {podiumRows.length}
+                                      </span>
+                                      <span className="podium-bar-stat">
+                                        {podiumPrimaryStat(
+                                          activeSlide[0],
+                                          podium2nd,
+                                        )}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="podium-bar-unit">
+                                  <span className="podium-bar-name podium-name-gold">
+                                    <img src="/crown-gold.svg" alt="" className="podium-crown" /> {activeWinner.participant}
+                                  </span>
+                                  <div className="podium-bar podium-gold">
+                                    <div className="podium-placement-circle podium-circle-gold">
+                                      {podiumRows.length > 0 ? "1" : "-"}
+                                    </div>
+                                    <span className="podium-bar-outof">
+                                      out of {podiumRows.length}
+                                    </span>
+                                    <span className="podium-bar-stat">
+                                      {podiumPrimaryStat(
+                                        activeSlide[0],
+                                        activeWinner,
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+                                {podium3rd && (
+                                  <div className="podium-bar-unit">
+                                    <span className="podium-bar-name podium-name-bronze">
+                                      <img src="/crown-bronze.svg" alt="" className="podium-crown" /> {podium3rd.participant}
+                                    </span>
+                                    <div className="podium-bar podium-bronze">
+                                      <div className="podium-placement-circle podium-circle-bronze">
+                                        {podiumRows.length > 2 ? "3" : "-"}
+                                      </div>
+                                      <span className="podium-bar-outof">
+                                        out of {podiumRows.length}
+                                      </span>
+                                      <span className="podium-bar-stat">
+                                        {podiumPrimaryStat(
+                                          activeSlide[0],
+                                          podium3rd,
+                                        )}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <p className="podium-detail">
+                              {rankingDetail(activeSlide[0], activeWinner)}
+                            </p>
+                            <div className="deck-action-row">
+                              <button
+                                type="button"
+                                className="expand-button"
+                                onClick={() =>
+                                  setExpandedSuperlative(
+                                    expandedSuperlative === activeSlide[0]
+                                      ? null
+                                      : activeSlide[0],
+                                  )
+                                }
+                              >
+                                {expandedSuperlative === activeSlide[0]
+                                  ? "Hide full ranking"
+                                  : `Expand ranking · ${podiumRows.length} members`}
+                              </button>
+                            </div>
+                            {expandedSuperlative === activeSlide[0] && (
+                              <div className="ranking-collapse-wrapper open">
+                                <div className="ranking-collapse-inner">
+                                  <div className="ranking-panel">
+                                    <strong>Full ranking</strong>
+                                    {podiumRows.length === 0 ? (
+                                      <p className="privacy">
+                                        Detailed rankings are not available for
+                                        this saved report.
+                                      </p>
+                                    ) : (
+                                      <ol>
+                                        {podiumRows.map((row, index) => (
+                                          <li
+                                            key={
+                                              row.participant_id ??
+                                              `${activeSlide[0]}-${row.participant}-${index}`
+                                            }
+                                          >
+                                            <div>
+                                              <strong>{index + 1}. {row.participant}</strong>
+                                              <span>
+                                                {rankingDetail(
+                                                  activeSlide[0],
+                                                  row,
+                                                )}
+                                              </span>
+                                            </div>
+                                          </li>
+                                        ))}
+                                      </ol>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="deck-navigation">
-                    <button
-                      type="button"
-                      className="deck-arrow"
-                      aria-label="Previous superlative"
-                      disabled={activeSlideIndex === 0}
-                      onClick={() => {
-                        setSlideIndex((current) => Math.max(0, current - 1));
-                        setExpandedSuperlative(null);
-                        setWinnerRevealed(false);
-                      }}
-                    >
-                      ← <span>Previous</span>
-                    </button>
                     <div className="deck-dots" aria-label="Superlative slides">
-                      {availableSuperlatives.map(([key]) => (
+                      {availableSuperlatives.map(([key], index) => (
                         <button
                           type="button"
                           key={key}
                           className={
                             key === activeSlide[0]
                               ? "deck-dot active"
-                              : "deck-dot"
+                              : viewedSlides.has(index)
+                                ? "deck-dot viewed"
+                                : "deck-dot"
                           }
                           aria-label={`Go to ${titleLabels[key] ?? key}`}
                           aria-current={
                             key === activeSlide[0] ? "step" : undefined
                           }
                           onClick={() => {
-                            setSlideIndex(
-                              availableSuperlatives.findIndex(
-                                ([slideKey]) => slideKey === key,
-                              ),
+                            setAutoPlay(false);
+                            const targetIndex = availableSuperlatives.findIndex(
+                              ([slideKey]) => slideKey === key,
                             );
+                            setSlideDirection(
+                              targetIndex > activeSlideIndex ? "right" : "left",
+                            );
+                            setSlideIndex(targetIndex);
                             setExpandedSuperlative(null);
                             setWinnerRevealed(false);
+                            setPodiumRevealed(false);
                           }}
                         />
                       ))}
                     </div>
-                    <button
-                      type="button"
-                      className="deck-arrow"
-                      aria-label="Next superlative"
-                      disabled={
-                        activeSlideIndex === availableSuperlatives.length - 1
-                      }
-                      onClick={() => {
-                        setSlideIndex((current) =>
-                          Math.min(
-                            availableSuperlatives.length - 1,
-                            current + 1,
-                          ),
-                        );
-                        setExpandedSuperlative(null);
-                        setWinnerRevealed(false);
-                      }}
-                    >
-                      <span>Next</span> →
-                    </button>
                   </div>
                 </div>
               </>
@@ -1330,7 +1606,7 @@ export default function Home() {
                 <p>No superlatives have enough data to display yet.</p>
               </div>
             )}
-            <p className="note">
+            <p className={`note${noteDismissed ? " dismissed" : ""}`}>
               The category and first-place position appear before the winner is
               revealed. Use the arrows or dots to move through the superlatives.
             </p>
@@ -1359,11 +1635,7 @@ export default function Home() {
                             [person.participant_id]: event.target.value,
                           }))
                         }
-                        placeholder={
-                          person.display_name === "Me"
-                            ? "Enter your name"
-                            : "Enter a name"
-                        }
+                        placeholder="New name"
                       />
                     </label>
                   ))}
