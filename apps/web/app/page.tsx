@@ -141,6 +141,28 @@ function formatDate(value: string) {
   });
 }
 
+function readChatIdFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("chat");
+}
+
+function chatUrl(id: string | null) {
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set("chat", id);
+  else url.searchParams.delete("chat");
+  return url.toString();
+}
+
+function pushChatIdInUrl(id: string | null) {
+  if (typeof window === "undefined") return;
+  window.history.pushState(null, "", chatUrl(id));
+}
+
+function replaceChatIdInUrl(id: string | null) {
+  if (typeof window === "undefined") return;
+  window.history.replaceState(null, "", chatUrl(id));
+}
+
 function looksLikeIdentifier(value: string) {
   const trimmed = value.trim();
   return (
@@ -391,9 +413,20 @@ function podiumPlacement(index: number, total: number): string {
 }
 
 export default function Home() {
+  const [initialSeed] = useState(() => {
+    if (typeof window === "undefined")
+      return { chatId: null as string | null, report: null as Report | null };
+    const chatId = readChatIdFromUrl();
+    const local = readLocalReports();
+    if (!chatId) return { chatId, report: null };
+    return {
+      chatId,
+      report: local.find((s) => s.id === chatId)?.report ?? null,
+    };
+  });
   const [file, setFile] = useState<File | null>(null);
   const [timezone, setTimezone] = useState("UTC");
-  const [report, setReport] = useState<Report | null>(null);
+  const [report, setReport] = useState<Report | null>(() => initialSeed.report);
   const [conversationChoices, setConversationChoices] = useState<
     ConversationOption[]
   >([]);
@@ -401,15 +434,25 @@ export default function Home() {
   const [conversationSearch, setConversationSearch] = useState("");
   const [conversationSearchActive, setConversationSearchActive] =
     useState(false);
-  const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
-  const [activeSavedReportId, setActiveSavedReportId] = useState<string | null>(
-    null,
+  const [savedReports, setSavedReports] = useState<SavedReport[]>(() =>
+    typeof window === "undefined" ? [] : readLocalReports(),
   );
-  const [homeView, setHomeView] = useState(true);
+  const [reportsLoaded, setReportsLoaded] = useState(
+    typeof window === "undefined" ? false : !isSupabaseConfigured(),
+  );
+  const [activeSavedReportId, setActiveSavedReportId] = useState<string | null>(
+    () =>
+      initialSeed.report && initialSeed.chatId ? initialSeed.chatId : null,
+  );
+  const [homeView, setHomeView] = useState(
+    !initialSeed.chatId || !initialSeed.report,
+  );
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [participantNames, setParticipantNames] = useState<
     Record<string, string>
-  >({});
+  >(() =>
+    initialSeed.report ? storedParticipantNames(initialSeed.report) : {},
+  );
   const [expandedSuperlative, setExpandedSuperlative] = useState<string | null>(
     null,
   );
@@ -444,6 +487,7 @@ export default function Home() {
   useEffect(() => {
     if (!isSupabaseConfigured()) {
       setSavedReports(readLocalReports());
+      setReportsLoaded(true);
       return;
     }
     const supabase = createClient();
@@ -456,18 +500,25 @@ export default function Home() {
         )
         .order("created_at", { ascending: false });
       if (active && data) setSavedReports(data as SavedReport[]);
+      if (active) setReportsLoaded(true);
     }
     void supabase.auth.getUser().then(({ data }) => {
       if (!active) return;
       setUser(data.user);
       if (data.user) void loadReports();
-      else setSavedReports(readLocalReports());
+      else {
+        setSavedReports(readLocalReports());
+        setReportsLoaded(true);
+      }
     });
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
         if (session?.user) void loadReports();
-        else setSavedReports(readLocalReports());
+        else {
+          setSavedReports(readLocalReports());
+          setReportsLoaded(true);
+        }
       },
     );
     return () => {
@@ -475,6 +526,60 @@ export default function Home() {
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  function openChatById(id: string | null) {
+    if (!id) {
+      setHomeView(true);
+      setActiveSavedReportId(null);
+      setReport(null);
+      setParticipantNames({});
+      return;
+    }
+    const item = savedReports.find((s) => s.id === id);
+    if (!item) return;
+    setReport(item.report);
+    setParticipantNames(storedParticipantNames(item.report));
+    setExpandedSuperlative(null);
+    setSlideIndex(0);
+    setWinnerRevealed(false);
+    setPodiumRevealed(false);
+    setAutoPlay(false);
+    setViewedSlides(new Set([0]));
+    setActiveSavedReportId(item.id);
+    setHomeView(false);
+  }
+
+  useEffect(() => {
+    const chatId = readChatIdFromUrl();
+    if (!chatId) return;
+    if (!reportsLoaded) return;
+    if (!savedReports.some((s) => s.id === chatId)) {
+      replaceChatIdInUrl(null);
+      openChatById(null);
+      return;
+    }
+    openChatById(chatId);
+  }, [savedReports, reportsLoaded]);
+
+  useEffect(() => {
+    const onPop = () => {
+      const chatId = readChatIdFromUrl();
+      if (!chatId) {
+        setHomeView(true);
+        setActiveSavedReportId(null);
+        setReport(null);
+        setParticipantNames({});
+        return;
+      }
+      if (!savedReports.some((s) => s.id === chatId)) {
+        window.history.back();
+        return;
+      }
+      openChatById(chatId);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [savedReports]);
 
   async function signInWithGoogle() {
     if (!isSupabaseConfigured()) {
@@ -498,6 +603,8 @@ export default function Home() {
     setReport(null);
     setActiveSavedReportId(null);
     setParticipantNames({});
+    replaceChatIdInUrl(null);
+    setHomeView(true);
   }
 
   async function saveReport(nextReport: Report) {
@@ -661,7 +768,9 @@ export default function Home() {
           setPodiumRevealed(false);
           setAutoPlay(false);
           setViewedSlides(new Set([0]));
-          setActiveSavedReportId(await saveReport(current.report));
+          const savedId = await saveReport(current.report);
+          setActiveSavedReportId(savedId);
+          replaceChatIdInUrl(savedId);
           setHomeView(false);
           finished = true;
         } else await new Promise((resolve) => window.setTimeout(resolve, 450));
@@ -685,6 +794,7 @@ export default function Home() {
       setActiveSavedReportId(null);
       setReport(null);
       setParticipantNames({});
+      replaceChatIdInUrl(null);
     }
   }
 
@@ -702,6 +812,7 @@ export default function Home() {
     setWinnerRevealed(false);
     setPodiumRevealed(false);
     setError("");
+    replaceChatIdInUrl(null);
   }
 
   const analyzedTitles = new Set(
@@ -724,6 +835,8 @@ export default function Home() {
   const displayedReport = report
     ? withParticipantNames(report, participantNames)
     : null;
+  const loadingReport =
+    readChatIdFromUrl() != null && !reportsLoaded && !report && homeView;
   const unavailableFormat = unavailableUploadFormat(file);
   const reportParticipants = report?.participants ?? [];
   const participantsToName = reportParticipants;
@@ -861,10 +974,8 @@ export default function Home() {
         <button
           className={`sidebar-tab${homeView ? " active" : ""}`}
           onClick={() => {
-            setHomeView(true);
-            setActiveSavedReportId(null);
-            setReport(null);
-            setParticipantNames({});
+            pushChatIdInUrl(null);
+            openChatById(null);
           }}
         >
           <svg
@@ -900,16 +1011,8 @@ export default function Home() {
                     item.id === activeSavedReportId ? "active-chat" : undefined
                   }
                   onClick={() => {
-                    setHomeView(false);
-                    setReport(item.report);
-                    setParticipantNames(storedParticipantNames(item.report));
-                    setExpandedSuperlative(null);
-                    setSlideIndex(0);
-                    setWinnerRevealed(false);
-                    setPodiumRevealed(false);
-                    setAutoPlay(false);
-                    setViewedSlides(new Set([0]));
-                    setActiveSavedReportId(item.id);
+                    pushChatIdInUrl(item.id);
+                    openChatById(item.id);
                   }}
                 >
                   <strong>{item.title}</strong>
@@ -936,7 +1039,14 @@ export default function Home() {
         </p>
       </aside>
       <main className="content">
-        {homeView && (
+        {loadingReport && (
+          <section className="panel deck-loading">
+            <p className="eyebrow">CHAT STATS</p>
+            <div className="spinner" aria-hidden="true" />
+            <p>Loading your report…</p>
+          </section>
+        )}
+        {!loadingReport && homeView && (
           <>
             <section className="hero">
               <p className="eyebrow">CHAT STATS</p>

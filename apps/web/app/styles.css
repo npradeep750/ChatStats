@@ -1290,3 +1290,28 @@ h2 {
     font-size: 14px;
   }
 }
+
+.deck-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 300px;
+  text-align: center;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(0, 0, 0, 0.12);
+  border-top-color: var(--accent, #4f46e5);
+  border-radius: 50%;
+  animation: deck-spin 0.9s linear infinite;
+}
+
+@keyframes deck-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
