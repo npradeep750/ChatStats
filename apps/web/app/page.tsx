@@ -224,6 +224,84 @@ function compactReportForSave(nextReport: Report): Report {
   };
 }
 
+function normalizePhoneNumber(value: string): string {
+  return value.replace(/[^\d]/g, "");
+}
+
+function stripInvisibles(value: string): string {
+  return value.replace(/[\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g, "");
+}
+
+function phoneVariants(value: string): string[] {
+  const digits = normalizePhoneNumber(value);
+  const variants = [digits];
+  if (digits.length === 11 && digits.startsWith("1")) variants.push(digits.slice(1));
+  else if (digits.length === 10) variants.push("1" + digits);
+  return variants;
+}
+
+function contactKey(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
+    ? trimmed
+    : normalizePhoneNumber(value);
+}
+
+function parseVcf(text: string): Map<string, string> {
+  const unfolded = text.replace(/\r\n?/g, "\n").replace(/\n[ \t]/g, "");
+  const map = new Map<string, string>();
+  const cards = unfolded.split(/^BEGIN:VCARD\s*$/im).slice(1);
+  for (const rawCard of cards) {
+    const card = rawCard.split(/^END:VCARD\s*$/im)[0] ?? "";
+    let fullName = "";
+    const nParts = card.match(/^(?:[A-Za-z0-9-]+\.)?N[^:]*:(.*)$/im)?.[1];
+    if (nParts) {
+      const [family, given, ...rest] = nParts.split(";");
+      fullName = [given, family, ...rest]
+        .map((part) => part?.trim())
+        .filter((part) => part && part !== "")
+        .join(" ")
+        .trim();
+    }
+    const fnValue = card.match(
+      /^(?:[A-Za-z0-9-]+\.)?FN[^:]*:(.*)$/im,
+    )?.[1]?.trim();
+    if (fnValue && fnValue !== " " && fullName.indexOf(fnValue) === -1) {
+      fullName = fnValue;
+    }
+    if (!fullName) continue;
+    const telMatches = card.matchAll(
+      /^(?:[A-Za-z0-9-]+\.)?TEL[^:]*:(.*)$/gim,
+    );
+    const emailMatches = card.matchAll(
+      /^(?:[A-Za-z0-9-]+\.)?EMAIL[^:]*:(.*)$/gim,
+    );
+    for (const match of telMatches)
+      for (const variant of phoneVariants(match[1]))
+        putContact(map, variant, fullName);
+    for (const match of emailMatches)
+      putContact(map, contactKey(match[1]), fullName);
+  }
+  return map;
+}
+
+function putContact(map: Map<string, string>, key: string, name: string): void {
+  if (!key) return;
+  if (!map.has(key)) map.set(key, name);
+}
+
+function firstNameOf(name: string): string {
+  const trimmed = name.trim();
+  if (
+    !trimmed ||
+    trimmed === "Me" ||
+    looksLikeIdentifier(trimmed) ||
+    !trimmed.includes(" ")
+  )
+    return trimmed;
+  return trimmed.split(/\s+/)[0];
+}
+
 const superlativeDescriptions: Record<string, string> = {
   comedian:
     "The participant whose messages are the funniest based on average and total positive reaction volume.",
@@ -425,6 +503,11 @@ export default function Home() {
     };
   });
   const [file, setFile] = useState<File | null>(null);
+  const [contactsFile, setContactsFile] = useState<File | null>(null);
+  const [contactsMap, setContactsMap] = useState<Map<string, string>>(
+    new Map(),
+  );
+  const [unmatchedCount, setUnmatchedCount] = useState(0);
   const [timezone, setTimezone] = useState("UTC");
   const [report, setReport] = useState<Report | null>(() => initialSeed.report);
   const [conversationChoices, setConversationChoices] = useState<
@@ -760,15 +843,37 @@ export default function Home() {
         if (current.status === "failed")
           throw new Error(current.error ?? "Analysis failed");
         if (current.status === "complete") {
+          const matchedNames: Record<string, string> = {};
+          let unmatched = 0;
+          if (contactsMap.size > 0) {
+            for (const person of current.report.participants ?? []) {
+              if (person.display_name === "Me") continue;
+              const raw = stripInvisibles(person.display_name);
+              const isIdentifier =
+                looksLikeIdentifier(raw) ||
+                (raw.trim().length > 0 &&
+                  /\d/.test(raw) &&
+                  !raw.includes(" "));
+              if (!isIdentifier) continue;
+              const name = contactsMap.get(contactKey(raw));
+              if (name) matchedNames[person.participant_id] = name;
+              else unmatched += 1;
+            }
+          }
+          setUnmatchedCount(unmatched);
           setReport(current.report);
-          setParticipantNames({});
+          setParticipantNames(matchedNames);
           setExpandedSuperlative(null);
           setSlideIndex(0);
           setWinnerRevealed(false);
           setPodiumRevealed(false);
           setAutoPlay(false);
           setViewedSlides(new Set([0]));
-          const savedId = await saveReport(current.report);
+          const namedReport =
+            Object.keys(matchedNames).length > 0
+              ? withParticipantNames(current.report, matchedNames)
+              : current.report;
+          const savedId = await saveReport(namedReport);
           setActiveSavedReportId(savedId);
           replaceChatIdInUrl(savedId);
           setHomeView(false);
@@ -795,11 +900,15 @@ export default function Home() {
       setReport(null);
       setParticipantNames({});
       replaceChatIdInUrl(null);
+      setHomeView(true);
     }
   }
 
   function onFileChange(nextFile: File | null) {
     setFile(nextFile);
+    setContactsFile(null);
+    setContactsMap(new Map());
+    setUnmatchedCount(0);
     setConversationChoices([]);
     setSelectedConversationId("");
     setConversationSearch("");
@@ -813,6 +922,24 @@ export default function Home() {
     setPodiumRevealed(false);
     setError("");
     replaceChatIdInUrl(null);
+  }
+
+  async function onContactsFileChange(nextFile: File | null) {
+    setContactsFile(nextFile);
+    setUnmatchedCount(0);
+    if (!nextFile) {
+      setContactsMap(new Map());
+      return;
+    }
+    try {
+      const text = await nextFile.text();
+      const parsed = parseVcf(text);
+      setContactsMap(parsed);
+      setError("");
+    } catch {
+      setContactsMap(new Map());
+      setError("Could not read the contacts file. Choose a .vcf export.");
+    }
   }
 
   const analyzedTitles = new Set(
@@ -832,8 +959,16 @@ export default function Home() {
     selectedConversationId !== "" &&
     analyzedChoiceIds.has(selectedConversationId);
 
+  const displayedNames = Object.fromEntries(
+    (report?.participants ?? []).map((person) => {
+      const override = participantNames[person.participant_id]?.trim();
+      const source = override || person.display_name || person.participant_id;
+      return [person.participant_id, firstNameOf(source)];
+    }),
+  );
+
   const displayedReport = report
-    ? withParticipantNames(report, participantNames)
+    ? withParticipantNames(report, displayedNames)
     : null;
   const loadingReport =
     readChatIdFromUrl() != null && !reportsLoaded && !report && homeView;
@@ -1072,6 +1207,25 @@ export default function Home() {
                     />
                     <small className="field-help">
                       Upload an iMessage chat.db file.
+                    </small>
+                  </label>
+                  <label>
+                    Contacts (optional)
+                    <input
+                      type="file"
+                      accept=".vcf,.vcard"
+                      onChange={(event) =>
+                        void onContactsFileChange(
+                          event.target.files?.[0] ?? null,
+                        )
+                      }
+                    />
+                    <small className="field-help">
+                      {contactsFile
+                        ? `${contactsFile.name} — ${contactsMap.size} contact${
+                            contactsMap.size === 1 ? "" : "s"
+                          } loaded.`
+                        : "Optional .vcf export to map phone numbers to names."}
                     </small>
                   </label>
                   <label>
@@ -1377,9 +1531,44 @@ export default function Home() {
                 </ol>
                 <p className="privacy">
                   Apple usually stores phone numbers and emails in{" "}
-                  <code>chat.db</code>, not your Contacts names. After analysis,
-                  use the <strong>Name participants</strong> panel to label each
-                  person. Those labels are saved with the report.
+                  <code>chat.db</code>, not your Contacts names. Upload a{" "}
+                  <strong>Contacts .vcf export</strong> (below) and matching
+                  numbers are mapped to names automatically. After analysis you
+                  can still use the <strong>Name participants</strong> panel to
+                  label anyone. The deck shows each person's first name; full
+                  names stay in the <strong>Name participants</strong> panel and
+                  in the saved report.
+                </p>
+              </details>
+              <details>
+                <summary>
+                  Export your Contacts as a vCard (.vcf) on a Mac
+                </summary>
+                <ol>
+                  <li>
+                    Open the <strong>Contacts</strong> app on your Mac.
+                  </li>
+                  <li>
+                    Select the contacts you want to include. To choose everyone,
+                    use <strong>Edit → Select All</strong>.
+                  </li>
+                  <li>
+                    In the menu bar choose{" "}
+                    <strong>File → Export → Export vCard</strong>.
+                  </li>
+                  <li>
+                    Save the file (it will have the <code>.vcf</code> extension)
+                    somewhere you can find it.
+                  </li>
+                  <li>
+                    Back here, upload that <code>.vcf</code> in the{" "}
+                    <strong>Contacts (optional)</strong> field alongside your{" "}
+                    <code>chat.db</code>, then analyze.
+                  </li>
+                </ol>
+                <p className="privacy">
+                  The file is read entirely on this page and never leaves your
+                  browser (only the resulting report is sent as usual).
                 </p>
               </details>
               <div className="locked-format" aria-disabled="true">
@@ -1781,6 +1970,14 @@ export default function Home() {
               The category and first-place position appear before the winner is
               revealed. Use the arrows or dots to move through the superlatives.
             </p>
+            {contactsFile && unmatchedCount > 0 && (
+              <p className="note">
+                {unmatchedCount} phone number{unmatchedCount === 1 ? "" : "s"}{" "}
+                {unmatchedCount === 1 ? "was" : "were"} not found in your
+                contacts file. Use the Name participants panel below to label{" "}
+                {unmatchedCount === 1 ? "it" : "them"}.
+              </p>
+            )}
             {participantsToName.length > 0 && (
               <div className="panel names-panel">
                 <h2>Name participants</h2>
