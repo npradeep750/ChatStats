@@ -485,7 +485,43 @@ def basic_metrics(dataset: CanonicalDataset) -> dict[str, Any]:
     return {key: sorted(value, key=lambda item: item.get("participant", "")) for key, value in results.items()}
 
 
+def _cleanse(dataset: CanonicalDataset) -> CanonicalDataset:
+    """Drop system-or-unknown participants along with all their messages and reactions.
+
+    Unknown senders (e.g. iMessage messages with an unresolvable handle, or
+    missing sender names in CSV/Instagram exports) should not appear as group
+    members and must not influence any superlative. Their reactions are dropped
+    too so they cannot boost another participant's score.
+    """
+    unknown_ids = {
+        participant.participant_id
+        for participant in dataset.participants
+        if participant.is_system_or_unknown
+    }
+    if not unknown_ids:
+        return dataset
+    participants = [
+        participant
+        for participant in dataset.participants
+        if participant.participant_id not in unknown_ids
+    ]
+    messages = [
+        message for message in dataset.messages if message.sender_id not in unknown_ids
+    ]
+    reactions = [
+        reaction for reaction in dataset.reactions if reaction.actor_id not in unknown_ids
+    ]
+    return CanonicalDataset(
+        dataset.conversation,
+        participants,
+        messages,
+        reactions,
+        dataset.warnings,
+    )
+
+
 def build_report(dataset: CanonicalDataset, progress_callback: Any | None = None) -> dict[str, Any]:
+    dataset = _cleanse(dataset)
     messages = _eligible(dataset.messages)
     participants = {participant.participant_id: participant.display_name for participant in dataset.participants}
     if progress_callback:

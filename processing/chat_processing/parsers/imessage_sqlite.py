@@ -409,15 +409,24 @@ def parse_sqlite(raw: bytes, timezone_name: str = "UTC", conversation_id: str | 
             sender_value, is_from_me = row["_handle_id"], row["_is_from_me"]
             if is_from_me:
                 sender = "Me"
+                sender_is_unknown = False
             elif sender_value is not None:
                 try:
-                    sender = handles.get(int(sender_value), f"Participant {sender_value}")
+                    resolved = handles.get(int(sender_value))
+                    if resolved is None:
+                        sender = f"Participant {sender_value}"
+                        sender_is_unknown = True
+                    else:
+                        sender = resolved
+                        sender_is_unknown = False
                 except (TypeError, ValueError):
                     sender = str(sender_value)
+                    sender_is_unknown = True
             else:
                 sender = "Unknown"
+                sender_is_unknown = True
             sender_id = stable_id("participant", sender.casefold())
-            participants.setdefault(sender_id, Participant(sender_id, sender, conversation.conversation_id))
+            participants.setdefault(sender_id, Participant(sender_id, sender, conversation.conversation_id, is_system_or_unknown=sender_is_unknown))
             text_value = message_texts.get(int(row["_rowid"]), "")
             mentions = decode_mentions(row["_attributed_body"], text_value)
 

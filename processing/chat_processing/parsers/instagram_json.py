@@ -38,9 +38,10 @@ def parse_json(raw: bytes, timezone_name: str = "UTC") -> CanonicalDataset:
         if not isinstance(item, dict):
             warnings.append(f"message {index}: ignored non-object record")
             continue
-        sender = normalize_text(_first(item, "sender_name", "sender", "author", "from", "username", default="Unknown")) or "Unknown"
+        raw_sender = normalize_text(_first(item, "sender_name", "sender", "author", "from", "username", default=""))
+        sender = raw_sender or "Unknown"
         sender_id = stable_id("participant", sender.casefold())
-        participants.setdefault(sender_id, Participant(sender_id, sender, conversation.conversation_id))
+        participants.setdefault(sender_id, Participant(sender_id, sender, conversation.conversation_id, is_system_or_unknown=not bool(raw_sender)))
         timestamp_value = _first(item, "timestamp_ms", "timestamp", "created_at", "date")
         try:
             timestamp = parse_timestamp(timestamp_value)
@@ -64,11 +65,14 @@ def parse_json(raw: bytes, timezone_name: str = "UTC") -> CanonicalDataset:
         for reaction_index, raw_reaction in enumerate(raw_reactions if isinstance(raw_reactions, list) else []):
             if isinstance(raw_reaction, str):
                 emoji, actor = raw_reaction, "unknown"
+                actor_is_unknown = True
             else:
                 emoji = str(_first(raw_reaction, "reaction", "emoji", "type", default="👍"))
-                actor = normalize_text(_first(raw_reaction, "actor", "sender", "user", "name", default="unknown"))
+                raw_actor = normalize_text(_first(raw_reaction, "actor", "sender", "user", "name", default=""))
+                actor = raw_actor or "unknown"
+                actor_is_unknown = not bool(raw_actor)
             actor_id = stable_id("participant", actor.casefold())
-            participants.setdefault(actor_id, Participant(actor_id, actor, conversation.conversation_id))
+            participants.setdefault(actor_id, Participant(actor_id, actor, conversation.conversation_id, is_system_or_unknown=actor_is_unknown))
             reaction_time = _first(raw_reaction, "timestamp", "timestamp_ms", default=None) if isinstance(raw_reaction, dict) else None
             reactions.append(Reaction(stable_id("reaction", f"{source_id}-{reaction_index}"), message_id, actor_id, emoji, "positive", parse_timestamp(reaction_time) if reaction_time else None))
     if not messages:

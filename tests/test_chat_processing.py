@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 
-from processing.chat_processing.analytics import basic_metrics, classify_reply, main_character_index, trendsetter_metrics, wordsmith_metrics
+from processing.chat_processing.analytics import basic_metrics, build_report, classify_reply, main_character_index, trendsetter_metrics, wordsmith_metrics
 from processing.chat_processing.models import CanonicalDataset, Conversation, Message, Participant, Reaction
 from processing.chat_processing.normalization import extract_emojis, normalize_contact, stable_id, stem_word, tokenize_words
 from processing.chat_processing.pipeline import list_conversations, parse_bytes, process_file
@@ -161,6 +161,31 @@ class AnalyticsTests(unittest.TestCase):
         rows = {row["participant_id"]: row for row in basic_metrics(dataset)["grammar_police"]}
         self.assertEqual(rows["a"]["grammar_messages"], 5)
         self.assertGreater(rows["a"]["grammar_score"], rows["b"]["grammar_score"])
+
+    def test_unknown_participants_are_removed_from_report_and_superlatives(self) -> None:
+        messages = [
+            message("a1", "a", 0, "hello from Ava"),
+            message("u1", "unknown", 10, "intrusive unknown message"),
+            message("r1", "a", 20, "Ava again"),
+        ]
+        reaction = Reaction("r_x", "a1", "unknown", "😂")
+        dataset = CanonicalDataset(
+            Conversation("c", "Test", "json"),
+            [
+                Participant("a", "Ava", "c"),
+                Participant("unknown", "Unknown", "c", is_system_or_unknown=True),
+            ],
+            messages,
+            [reaction],
+        )
+        report = build_report(dataset)
+        participant_ids = {p["participant_id"] for p in report["participants"]}
+        self.assertEqual(participant_ids, {"a"})
+        self.assertEqual(report["conversation_summary"]["message_count"], 2)
+        self.assertEqual(report["conversation_summary"]["participant_count"], 1)
+        for row in report["leaderboards"]["novelist"]:
+            self.assertNotEqual(row["participant_id"], "unknown")
+
 class ParserTests(unittest.TestCase):
     def test_json_fixture_and_report(self) -> None:
         raw = json.dumps({"title": "Chat", "messages": [{"id": "1", "sender": "A", "timestamp": "2026-01-01T00:00:00Z", "text": "hello"}]}).encode()

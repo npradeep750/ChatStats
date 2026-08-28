@@ -17,6 +17,7 @@ Then open http://127.0.0.1:8000. Local uploads up to 1 GB are accepted by defaul
 - Generic Instagram-style JSON, CSV, and iMessage SQLite parsing.
 - Conversation-relative Main Character ranking with equal reaction-type weights.
 - Reply attribution and reply-nature classification.
+- Pick a username and profile picture once (signed in); the username is used as your name in every chat, with per-chat overrides.
 - Double Texter, Novelist, Conversation Starter, Night Owl, Early Bird, Emoji Addict, Media Spammer, Quick-Draw, Ghost, Time Traveler, and Grammar Police metrics.
 - FastAPI upload endpoint and a small dashboard client.
 

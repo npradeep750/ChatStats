@@ -29,9 +29,10 @@ def parse_csv(raw: bytes, timezone_name: str = "UTC") -> CanonicalDataset:
     messages: list[Message] = []
     warnings: list[str] = []
     for index, row in enumerate(rows):
-        sender = normalize_text(field(row, "sender", "author", "from", "user")) or "Unknown"
+        raw_sender = normalize_text(field(row, "sender", "author", "from", "user"))
+        sender = raw_sender or "Unknown"
         sender_id = stable_id("participant", sender.casefold())
-        participants.setdefault(sender_id, Participant(sender_id, sender, conversation.conversation_id))
+        participants.setdefault(sender_id, Participant(sender_id, sender, conversation.conversation_id, is_system_or_unknown=not bool(raw_sender)))
         try:
             timestamp = parse_timestamp(field(row, "timestamp", "time", "date"))
         except ValueError as exc:

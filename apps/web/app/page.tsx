@@ -2,7 +2,14 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
+import {
+  createClient,
+  getProfileFromSupabase,
+  isSupabaseConfigured,
+  removeAvatarFromSupabase,
+  saveProfileToSupabase,
+  uploadAvatarToSupabase,
+} from "../lib/supabase/client";
 
 type Ranking = {
   participant: string;
@@ -94,6 +101,8 @@ type ConversationOption = {
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const LOCAL_KEY = "chat-analytics-saved-reports";
+const USERNAME_LOCAL_KEY = "chat-stats-username";
+const AVATAR_LOCAL_KEY = "chat-stats-avatar";
 const TIMEZONE_OPTIONS = [
   { value: "UTC", label: "UTC" },
   { value: "America/Los_Angeles", label: "Pacific Time — Los Angeles" },
@@ -316,9 +325,16 @@ function firstNameOf(name: string): string {
   return trimmed.split(/\s+/)[0];
 }
 
+function meParticipantIdFrom(report: Report): string | null {
+  const me = (report.participants ?? []).find(
+    (person) => person.display_name === "Me",
+  );
+  return me?.participant_id ?? null;
+}
+
 const superlativeDescriptions: Record<string, string> = {
   main_character:
-    "The participant whose messages get the most reactions across the conversation, whether positive, negative, or neutral.",
+    "The participant whose messages get the most reactions across the conversation.",
   double_texter:
     "The participant most likely to send multiple messages in a row.",
   novelist:
@@ -345,7 +361,9 @@ const superlativeDescriptions: Record<string, string> = {
   trendsetter: "The participant who introduces vocabulary that others pick up.",
 };
 
-const leaderboardNames: Record<string, string> = { main_character: "main_character" };
+const leaderboardNames: Record<string, string> = {
+  main_character: "main_character",
+};
 
 function useAnimatedCount(target: number, duration = 800) {
   const [display, setDisplay] = useState(0);
@@ -490,7 +508,8 @@ function rankingDetail(key: string, row: Ranking) {
 }
 
 function podiumPrimaryStat(key: string, row: Ranking): string {
-  if (key === "main_character") return `${row.ranking_score ?? row.score ?? 0} score`;
+  if (key === "main_character")
+    return `${row.ranking_score ?? row.score ?? 0} score`;
   if (key === "double_texter") return `${row.rate ?? 0}% rate`;
   if (key === "novelist") return `${row.average_words ?? 0} avg words`;
   if (key === "conversation_starter") return `${row.ranking_score ?? 0} score`;
@@ -545,9 +564,18 @@ export default function Home() {
   const [homeView, setHomeView] = useState(true);
   const [hasUrlChat, setHasUrlChat] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [participantNames, setParticipantNames] = useState<
     Record<string, string>
   >({});
+  const [username, setUsername] = useState<string>("");
+  const [usernameDraft, setUsernameDraft] = useState<string>("");
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
+  const [avatarDraft, setAvatarDraft] = useState<File | null>(null);
+  const [removeAvatarFlag, setRemoveAvatarFlag] = useState(false);
   const [expandedSuperlative, setExpandedSuperlative] = useState<string | null>(
     null,
   );
@@ -622,6 +650,52 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    let stored = "";
+    let storedAvatar = "";
+    try {
+      stored = window.localStorage.getItem(USERNAME_LOCAL_KEY) ?? "";
+      storedAvatar = window.localStorage.getItem(AVATAR_LOCAL_KEY) ?? "";
+    } catch {
+      stored = "";
+      storedAvatar = "";
+    }
+    if (stored) {
+      setUsername(stored);
+      setUsernameDraft(stored);
+    }
+    if (storedAvatar) setAvatarUrl(storedAvatar);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    if (!isSupabaseConfigured()) return;
+    let active = true;
+    void getProfileFromSupabase().then((profile) => {
+      if (!active) return;
+      if (profile.username) {
+        setUsername(profile.username);
+        setUsernameDraft(profile.username);
+        try {
+          window.localStorage.setItem(USERNAME_LOCAL_KEY, profile.username);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (profile.avatar_url) {
+        setAvatarUrl(profile.avatar_url);
+        try {
+          window.localStorage.setItem(AVATAR_LOCAL_KEY, profile.avatar_url);
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
   function openChatById(id: string | null) {
     if (!id) {
       setHomeView(true);
@@ -682,6 +756,19 @@ export default function Home() {
     return () => window.removeEventListener("popstate", onPop);
   }, [savedReports]);
 
+  useEffect(() => {
+    if (!settingsOpen && !profileOpen && !searchOpen) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSettingsOpen(false);
+        setProfileOpen(false);
+        setSearchOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [settingsOpen, profileOpen, searchOpen]);
+
   async function signInWithGoogle() {
     if (!isSupabaseConfigured()) {
       setError(
@@ -706,6 +793,63 @@ export default function Home() {
     setParticipantNames({});
     replaceChatIdInUrl(null);
     setHomeView(true);
+  }
+
+  async function handleSaveProfile() {
+    const nextUsername = usernameDraft.trim();
+    setError("");
+    if (!user) {
+      setError("Sign in to save your profile.");
+      return;
+    }
+    let nextAvatarUrl = avatarUrl;
+    try {
+      if (avatarDraft) {
+        if (!avatarDraft.type.startsWith("image/")) {
+          setError("Profile picture must be an image (JPG, PNG, etc.).");
+          return;
+        }
+        if (avatarDraft.size > 5 * 1024 * 1024) {
+          setError("Profile picture must be 5 MB or smaller.");
+          return;
+        }
+        const uploaded = await uploadAvatarToSupabase(avatarDraft);
+        if (!uploaded) {
+          setError("Could not upload your profile picture.");
+          return;
+        }
+        if (avatarUrl) await removeAvatarFromSupabase(avatarUrl);
+        nextAvatarUrl = uploaded;
+        setAvatarDraft(null);
+        setRemoveAvatarFlag(false);
+      } else if (removeAvatarFlag && avatarUrl) {
+        await removeAvatarFromSupabase(avatarUrl);
+        nextAvatarUrl = "";
+        setRemoveAvatarFlag(false);
+      }
+      await saveProfileToSupabase({
+        username: nextUsername,
+        avatar_url: nextAvatarUrl,
+      });
+      setUsername(nextUsername);
+      setAvatarUrl(nextAvatarUrl);
+      try {
+        window.localStorage.setItem(USERNAME_LOCAL_KEY, nextUsername);
+        window.localStorage.setItem(AVATAR_LOCAL_KEY, nextAvatarUrl);
+      } catch {
+        /* ignore */
+      }
+    } catch {
+      setError("Could not save your profile. Please try again.");
+    }
+  }
+
+  function openProfile() {
+    setAccountMenuOpen(false);
+    setUsernameDraft(username);
+    setAvatarDraft(null);
+    setRemoveAvatarFlag(false);
+    setProfileOpen(true);
   }
 
   async function saveReport(nextReport: Report) {
@@ -975,10 +1119,20 @@ export default function Home() {
     selectedConversationId !== "" &&
     analyzedChoiceIds.has(selectedConversationId);
 
+  const meId = report ? meParticipantIdFrom(report) : null;
+  const searchQueryLower = searchQuery.trim().toLowerCase();
+  const filteredReports = savedReports.filter((item) =>
+    item.title.toLowerCase().includes(searchQueryLower),
+  );
   const displayedNames = Object.fromEntries(
     (report?.participants ?? []).map((person) => {
       const override = participantNames[person.participant_id]?.trim();
-      const source = override || person.display_name || person.participant_id;
+      const isMe = person.participant_id === meId;
+      const source =
+        override ||
+        (isMe && username.trim() ? username.trim() : "") ||
+        person.display_name ||
+        person.participant_id;
       return [person.participant_id, firstNameOf(source)];
     }),
   );
@@ -1021,10 +1175,7 @@ export default function Home() {
       : leaderboardRows(
           displayedReport ?? ({} as Report),
           "main_character",
-        ).reduce(
-          (total, row) => total + (row.total_reactions ?? 0),
-          0,
-        );
+        ).reduce((total, row) => total + (row.total_reactions ?? 0), 0);
 
   const animMessages = useAnimatedCount(
     displayedReport?.conversation_summary.message_count ?? 0,
@@ -1093,12 +1244,53 @@ export default function Home() {
                 onClick={() => setAccountMenuOpen(!accountMenuOpen)}
               >
                 <span className="avatar">
-                  {(user.email ?? "?")[0].toUpperCase()}
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="" />
+                  ) : (
+                    (user.email ?? "?")[0].toUpperCase()
+                  )}
                 </span>
                 <span title={user.email ?? "Signed in"}>{user.email}</span>
               </button>
               {accountMenuOpen && (
                 <div className="account-dropdown">
+                  <button onClick={openProfile}>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    Profile
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      setSettingsOpen(true);
+                    }}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                    Settings
+                  </button>
                   <button onClick={signOut}>
                     <svg
                       width="14"
@@ -1150,7 +1342,33 @@ export default function Home() {
         </button>
         <div className="history-heading">
           <span>Saved group chats</span>
-          <span className="count">{savedReports.length}</span>
+          <div className="history-heading-actions">
+            {user && savedReports.length > 0 && (
+              <button
+                className="search-button"
+                aria-label="Search chats"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSearchOpen(true);
+                }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </button>
+            )}
+            <span className="count">{savedReports.length}</span>
+          </div>
         </div>
         <div className="history-list">
           {savedReports.length === 0 ? (
@@ -2001,31 +2219,40 @@ export default function Home() {
               <div className="panel names-panel">
                 <h2>Name participants</h2>
                 <p className="privacy">
-                  The export identifies people by phone number or email. Add
-                  names below so every card and leaderboard uses a friendly
-                  name. You can name yourself too. These labels stay in your
-                  saved report.
+                  Assign a name to every participant in the conversation below.
                 </p>
                 <div className="name-fields">
-                  {participantsToName.map((person) => (
-                    <label key={person.participant_id}>
-                      <span>
-                        {person.display_name === "Me"
-                          ? "You (currently shown as Me)"
-                          : person.display_name}
-                      </span>
-                      <input
-                        value={participantNames[person.participant_id] ?? ""}
-                        onChange={(event) =>
-                          setParticipantNames((current) => ({
-                            ...current,
-                            [person.participant_id]: event.target.value,
-                          }))
-                        }
-                        placeholder="New name"
-                      />
-                    </label>
-                  ))}
+                  {participantsToName.map((person) => {
+                    const isMe = person.participant_id === meId;
+                    const inputValue = isMe
+                      ? (participantNames[person.participant_id] ?? username)
+                      : (participantNames[person.participant_id] ?? "");
+                    return (
+                      <label key={person.participant_id}>
+                        <span>
+                          {person.display_name === "Me"
+                            ? username.trim()
+                              ? `You (default: ${firstNameOf(username)})`
+                              : "You"
+                            : person.display_name}
+                        </span>
+                        <input
+                          value={inputValue}
+                          onChange={(event) =>
+                            setParticipantNames((current) => ({
+                              ...current,
+                              [person.participant_id]: event.target.value,
+                            }))
+                          }
+                          placeholder={
+                            isMe && username.trim()
+                              ? firstNameOf(username)
+                              : "New name"
+                          }
+                        />
+                      </label>
+                    );
+                  })}
                 </div>
                 <button
                   type="button"
@@ -2036,6 +2263,201 @@ export default function Home() {
               </div>
             )}
           </section>
+        )}
+        {settingsOpen && user && (
+          <div
+            className="settings-overlay"
+            onClick={() => setSettingsOpen(false)}
+          >
+            <div
+              className="settings-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="settings-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="settings-modal-head">
+                <h2 id="settings-title">Settings</h2>
+                <button
+                  type="button"
+                  className="settings-close"
+                  onClick={() => setSettingsOpen(false)}
+                  aria-label="Close settings"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="settings-body">
+                <p className="settings-hint">
+                  No settings here yet. Use Profile to manage your name and
+                  picture.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {profileOpen && user && (
+          <div
+            className="settings-overlay"
+            onClick={() => setProfileOpen(false)}
+          >
+            <div
+              className="settings-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="profile-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="settings-modal-head">
+                <h2 id="profile-title">Edit profile</h2>
+                <button
+                  type="button"
+                  className="settings-close"
+                  onClick={() => setProfileOpen(false)}
+                  aria-label="Close profile"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="settings-body profile-body">
+                <div className="profile-avatar-wrap">
+                  <span className="avatar-profile">
+                    {avatarDraft ? (
+                      <img
+                        src={URL.createObjectURL(avatarDraft)}
+                        alt="Profile preview"
+                      />
+                    ) : avatarUrl ? (
+                      <img src={avatarUrl} alt="" />
+                    ) : (
+                      (user.email ?? "?")[0].toUpperCase()
+                    )}
+                    <label className="avatar-camera" title="Change picture">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) {
+                            setAvatarDraft(file);
+                            setRemoveAvatarFlag(false);
+                          }
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </span>
+                </div>
+                <div className="profile-fields">
+                  <label className="settings-field profile-field-floating">
+                    <span className="settings-label">Display name</span>
+                    <input
+                      value={usernameDraft}
+                      onChange={(event) => setUsernameDraft(event.target.value)}
+                      placeholder={
+                        username.trim()
+                          ? firstNameOf(username)
+                          : "Set a username"
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="settings-footer">
+                  <button
+                    type="button"
+                    className="settings-cancel"
+                    onClick={() => setProfileOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-save"
+                    onClick={() => void handleSaveProfile()}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {searchOpen && (
+          <div
+            className="settings-overlay"
+            onClick={() => setSearchOpen(false)}
+          >
+            <div
+              className="settings-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="search-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="settings-modal-head">
+                <h2 id="search-title">Search chats</h2>
+                <button
+                  type="button"
+                  className="settings-close"
+                  onClick={() => setSearchOpen(false)}
+                  aria-label="Close search"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="settings-body">
+                <input
+                  className="search-input"
+                  placeholder="Search by title…"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  autoFocus
+                />
+                <div className="search-results">
+                  {searchQueryLower && filteredReports.length === 0 ? (
+                    <p className="empty-history">
+                      No chats match “{searchQuery}”.
+                    </p>
+                  ) : (
+                    filteredReports.map((item) => (
+                      <button
+                        type="button"
+                        className="search-result"
+                        key={item.id}
+                        onClick={() => {
+                          setSearchOpen(false);
+                          setSearchQuery("");
+                          pushChatIdInUrl(item.id);
+                          openChatById(item.id);
+                        }}
+                      >
+                        <strong>{item.title}</strong>
+                        <small>
+                          {item.message_count} messages ·{" "}
+                          {formatDate(item.created_at)}
+                        </small>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>

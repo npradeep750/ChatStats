@@ -16,16 +16,20 @@ The database stores aggregate report JSON, not the uploaded raw file or raw mess
 5. In the Supabase dashboard, open **Project Settings → Data API**.
 6. Copy the **Project URL** and the **Publishable key**. Do not copy a secret/service-role key into the browser.
 
-## 2. Create the saved-report table
+## 2. Run the database schema
 
 1. Open **SQL Editor** in Supabase.
 2. Create a new query.
 3. Copy the complete contents of `supabase/schema.sql` into the editor.
 4. Click **Run**.
 
-The schema enables Row Level Security and only permits an authenticated user to read, insert, update, or delete rows whose `user_id` matches their own Supabase Auth user. Saved reports contain compact aggregate analytics; large per-message reaction evidence is kept out of saved history so large chats do not hit Supabase statement timeouts.
+The schema enables Row Level Security on two tables and only permits an authenticated user to access rows whose `user_id` matches their own Supabase Auth user:
+- `chat_reports` holds saved report JSON (compact aggregate analytics; large per-message reaction evidence is kept out so large chats do not hit Supabase statement timeouts).
+- `user_profiles` holds a per-user `username` (the default display name for the user's own participant in every chat) and an `avatar_url` profile picture.
 
-If the table already exists, rerun the complete `supabase/schema.sql` file after pulling code updates. The `grant update` statement and update policy are needed when saving participant names.
+The schema also creates a public Storage bucket called `avatars` (each user's pictures live under `avatars/<user_id>/`) plus the Storage RLS policies so users can only read/upload/update/delete their own picture. Profile pictures render directly via the public URL.
+
+If the tables already exist, rerun the complete `supabase/schema.sql` file after pulling code updates. The `grant update` and update policies are needed when saving participant names, the username, and the profile picture.
 
 ## 3. Enable Google sign-in
 
