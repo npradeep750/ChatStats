@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
 
@@ -52,6 +52,14 @@ type Ranking = {
   silence_trigger_rate?: number;
   total_silence_hours?: number;
   longest_silence_hours?: number;
+  spread?: number;
+  total_uses?: number;
+  unique_words?: number;
+  total_words?: number;
+  first_use_terms?: number;
+  mention_count?: number;
+  total_mentions?: number;
+  unmapped_mentions?: number;
 };
 type ReportParticipant = { participant_id: string; display_name: string };
 type Report = {
@@ -109,7 +117,7 @@ function unavailableUploadFormat(file: File | null) {
   return null;
 }
 const titleLabels: Record<string, string> = {
-  comedian: "The Comedian",
+  main_character: "The Main Character",
   novelist: "The Novelist",
   double_texter: "The Double Texter",
   conversation_starter: "The Conversation Starter",
@@ -121,6 +129,8 @@ const titleLabels: Record<string, string> = {
   ghost: "The Ghost",
   time_traveler: "The Time Traveler",
   grammar_police: "The Grammar Police",
+  wordsmith: "The Wordsmith",
+  trendsetter: "The Trendsetter",
 };
 
 function readLocalReports(): SavedReport[] {
@@ -209,18 +219,20 @@ function withParticipantNames(
 
 function compactReportForSave(nextReport: Report): Report {
   const leaderboards = nextReport.leaderboards ?? {};
-  const humor = leaderboards.humor;
-  const compactHumor =
-    humor && typeof humor === "object" && !Array.isArray(humor)
+  const mainCharacter = leaderboards.main_character;
+  const compactMainCharacter =
+    mainCharacter &&
+    typeof mainCharacter === "object" &&
+    !Array.isArray(mainCharacter)
       ? Object.fromEntries(
-          Object.entries(humor as Record<string, unknown>).filter(
+          Object.entries(mainCharacter as Record<string, unknown>).filter(
             ([key]) => key !== "message_evidence",
           ),
         )
-      : humor;
+      : mainCharacter;
   return {
     ...nextReport,
-    leaderboards: { ...leaderboards, humor: compactHumor },
+    leaderboards: { ...leaderboards, main_character: compactMainCharacter },
   };
 }
 
@@ -229,13 +241,17 @@ function normalizePhoneNumber(value: string): string {
 }
 
 function stripInvisibles(value: string): string {
-  return value.replace(/[\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g, "");
+  return value.replace(
+    /[\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g,
+    "",
+  );
 }
 
 function phoneVariants(value: string): string[] {
   const digits = normalizePhoneNumber(value);
   const variants = [digits];
-  if (digits.length === 11 && digits.startsWith("1")) variants.push(digits.slice(1));
+  if (digits.length === 11 && digits.startsWith("1"))
+    variants.push(digits.slice(1));
   else if (digits.length === 10) variants.push("1" + digits);
   return variants;
 }
@@ -263,16 +279,14 @@ function parseVcf(text: string): Map<string, string> {
         .join(" ")
         .trim();
     }
-    const fnValue = card.match(
-      /^(?:[A-Za-z0-9-]+\.)?FN[^:]*:(.*)$/im,
-    )?.[1]?.trim();
+    const fnValue = card
+      .match(/^(?:[A-Za-z0-9-]+\.)?FN[^:]*:(.*)$/im)?.[1]
+      ?.trim();
     if (fnValue && fnValue !== " " && fullName.indexOf(fnValue) === -1) {
       fullName = fnValue;
     }
     if (!fullName) continue;
-    const telMatches = card.matchAll(
-      /^(?:[A-Za-z0-9-]+\.)?TEL[^:]*:(.*)$/gim,
-    );
+    const telMatches = card.matchAll(/^(?:[A-Za-z0-9-]+\.)?TEL[^:]*:(.*)$/gim);
     const emailMatches = card.matchAll(
       /^(?:[A-Za-z0-9-]+\.)?EMAIL[^:]*:(.*)$/gim,
     );
@@ -303,33 +317,35 @@ function firstNameOf(name: string): string {
 }
 
 const superlativeDescriptions: Record<string, string> = {
-  comedian:
-    "The participant whose messages are the funniest based on average and total positive reaction volume.",
+  main_character:
+    "The participant whose messages get the most reactions across the conversation, whether positive, negative, or neutral.",
   double_texter:
-    "The participant most likely to send multiple messages in a row before someone else replies.",
+    "The participant most likely to send multiple messages in a row.",
   novelist:
     "The participant who writes the longest messages on average, based on word count.",
   conversation_starter:
-    "The participant who most often starts the conversation after at least four hours of silence.",
+    "The participant who starts the conversation most after at least four hours of silence.",
   night_owl:
-    "The participant with the strongest share of messages sent between midnight and 6 a.m.",
+    "The participant with the most messages sent between midnight and 6 a.m.",
   early_bird:
-    "The participant with the strongest share of messages sent between 6 a.m. and 9 a.m.",
-  emoji_addict:
-    "The participant with the strongest emoji habit, based on average and total emoji volume.",
+    "The participant with the most messages sent between 6 a.m. and 9 a.m.",
+  emoji_addict: "The participant who uses the most emojis.",
   media_spammer:
-    "The participant with the strongest media habit, based on average and total volume of photos, videos, files, and links.",
+    "The participant who uses the most photos, videos, files, and links.",
   quick_draw:
     "The participant with the fastest typical reply time to another participant.",
   ghost:
     "The participant with the fewest messages in this selected conversation.",
   time_traveler:
-    "The participant most likely to reply four or more hours after a message and after the group has gone quiet.",
+    "The participant most likely to reply four or more hours after the group has gone quiet.",
   grammar_police:
-    "The participant who uses the most sentence-ending punctuation, capitalization, and formal grammar markers.",
+    "The participant who uses the most sentence-ending punctuation, capitalization, etc.",
+  wordsmith:
+    "The participant with the largest unique vocabulary, excluding common filler words.",
+  trendsetter: "The participant who introduces vocabulary that others pick up.",
 };
 
-const leaderboardNames: Record<string, string> = { comedian: "humor" };
+const leaderboardNames: Record<string, string> = { main_character: "main_character" };
 
 function useAnimatedCount(target: number, duration = 800) {
   const [display, setDisplay] = useState(0);
@@ -356,7 +372,7 @@ function useAnimatedCount(target: number, duration = 800) {
 function leaderboardRows(nextReport: Report, key: string): Ranking[] {
   const source = nextReport.leaderboards?.[leaderboardNames[key] ?? key];
   const rawRows =
-    key === "comedian" &&
+    key === "main_character" &&
     source &&
     typeof source === "object" &&
     !Array.isArray(source)
@@ -387,7 +403,7 @@ function leaderboardRows(nextReport: Report, key: string): Ranking[] {
             ? "ranking_score"
             : ["night_owl", "early_bird"].includes(key)
               ? "share"
-              : key === "comedian"
+              : key === "main_character"
                 ? "ranking_score"
                 : ["emoji_addict", "media_spammer", "time_traveler"].includes(
                       key,
@@ -395,7 +411,11 @@ function leaderboardRows(nextReport: Report, key: string): Ranking[] {
                   ? "ranking_score"
                   : key === "grammar_police"
                     ? "grammar_score"
-                    : "per_100_messages";
+                    : key === "wordsmith"
+                      ? "unique_words"
+                      : key === "trendsetter"
+                        ? "first_use_terms"
+                        : "per_100_messages";
     return (
       Number((right as Record<string, unknown>)[field] ?? 0) -
       Number((left as Record<string, unknown>)[field] ?? 0)
@@ -431,8 +451,8 @@ function reactionTypeSummary(row: Ranking) {
 }
 
 function rankingDetail(key: string, row: Ranking) {
-  if (key === "comedian")
-    return `${row.ranking_score ?? row.score ?? 0} comedy score · ${row.total_reactions ?? 0} positive reactions · ${row.reaction_rate ?? 0}% of messages reacted to`;
+  if (key === "main_character")
+    return `${row.ranking_score ?? row.score ?? 0} main character score · ${row.total_reactions ?? 0} reactions · ${row.reaction_rate ?? 0}% of messages reacted to`;
   if (key === "double_texter")
     return `${row.rate ?? 0}% double-text rate · longest run ${row.max_run ?? 0} messages`;
   if (key === "novelist") {
@@ -463,10 +483,14 @@ function rankingDetail(key: string, row: Ranking) {
     return `${row.late_reply_count ?? 0} late returns · ${row.average_late_hours ?? 0} hours avg delay · longest ${row.longest_late_hours ?? 0} hours`;
   if (key === "grammar_police")
     return `${row.grammar_score ?? 0} grammar score · ${row.proper_punctuation_rate ?? 0}% punctuation · ${row.capitalization_rate ?? 0}% capitalization`;
+  if (key === "wordsmith")
+    return `${row.unique_words ?? 0} unique words · ${row.total_words ?? 0} words total · ${row.eligible_messages ?? 0} messages (needs ${row.minimum_sample ?? 20})`;
+  if (key === "trendsetter")
+    return `${row.first_use_terms ?? 0} words they introduced that others adopted`;
 }
 
 function podiumPrimaryStat(key: string, row: Ranking): string {
-  if (key === "comedian") return `${row.ranking_score ?? row.score ?? 0} score`;
+  if (key === "main_character") return `${row.ranking_score ?? row.score ?? 0} score`;
   if (key === "double_texter") return `${row.rate ?? 0}% rate`;
   if (key === "novelist") return `${row.average_words ?? 0} avg words`;
   if (key === "conversation_starter") return `${row.ranking_score ?? 0} score`;
@@ -482,6 +506,8 @@ function podiumPrimaryStat(key: string, row: Ranking): string {
   if (key === "time_traveler")
     return `${row.late_reply_count ?? 0} late returns`;
   if (key === "grammar_police") return `${row.grammar_score ?? 0} score`;
+  if (key === "wordsmith") return `${row.unique_words ?? 0} unique words`;
+  if (key === "trendsetter") return `${row.first_use_terms ?? 0} adopted words`;
   return "";
 }
 
@@ -491,17 +517,6 @@ function podiumPlacement(index: number, total: number): string {
 }
 
 export default function Home() {
-  const [initialSeed] = useState(() => {
-    if (typeof window === "undefined")
-      return { chatId: null as string | null, report: null as Report | null };
-    const chatId = readChatIdFromUrl();
-    const local = readLocalReports();
-    if (!chatId) return { chatId, report: null };
-    return {
-      chatId,
-      report: local.find((s) => s.id === chatId)?.report ?? null,
-    };
-  });
   const [file, setFile] = useState<File | null>(null);
   const [contactsFile, setContactsFile] = useState<File | null>(null);
   const [contactsMap, setContactsMap] = useState<Map<string, string>>(
@@ -509,7 +524,7 @@ export default function Home() {
   );
   const [unmatchedCount, setUnmatchedCount] = useState(0);
   const [timezone, setTimezone] = useState("UTC");
-  const [report, setReport] = useState<Report | null>(() => initialSeed.report);
+  const [report, setReport] = useState<Report | null>(null);
   const [conversationChoices, setConversationChoices] = useState<
     ConversationOption[]
   >([]);
@@ -523,19 +538,16 @@ export default function Home() {
   const [reportsLoaded, setReportsLoaded] = useState(
     typeof window === "undefined" ? false : !isSupabaseConfigured(),
   );
+  const lastOpenedChatRef = useRef<string | null>(null);
   const [activeSavedReportId, setActiveSavedReportId] = useState<string | null>(
-    () =>
-      initialSeed.report && initialSeed.chatId ? initialSeed.chatId : null,
+    null,
   );
-  const [homeView, setHomeView] = useState(
-    !initialSeed.chatId || !initialSeed.report,
-  );
+  const [homeView, setHomeView] = useState(true);
+  const [hasUrlChat, setHasUrlChat] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [participantNames, setParticipantNames] = useState<
     Record<string, string>
-  >(() =>
-    initialSeed.report ? storedParticipantNames(initialSeed.report) : {},
-  );
+  >({});
   const [expandedSuperlative, setExpandedSuperlative] = useState<string | null>(
     null,
   );
@@ -620,8 +632,10 @@ export default function Home() {
     }
     const item = savedReports.find((s) => s.id === id);
     if (!item) return;
+    const sameChat = lastOpenedChatRef.current === id;
+    lastOpenedChatRef.current = id;
     setReport(item.report);
-    setParticipantNames(storedParticipantNames(item.report));
+    if (!sameChat) setParticipantNames(storedParticipantNames(item.report));
     setExpandedSuperlative(null);
     setSlideIndex(0);
     setWinnerRevealed(false);
@@ -631,6 +645,10 @@ export default function Home() {
     setActiveSavedReportId(item.id);
     setHomeView(false);
   }
+
+  useEffect(() => {
+    setHasUrlChat(readChatIdFromUrl() != null);
+  }, []);
 
   useEffect(() => {
     const chatId = readChatIdFromUrl();
@@ -851,9 +869,7 @@ export default function Home() {
               const raw = stripInvisibles(person.display_name);
               const isIdentifier =
                 looksLikeIdentifier(raw) ||
-                (raw.trim().length > 0 &&
-                  /\d/.test(raw) &&
-                  !raw.includes(" "));
+                (raw.trim().length > 0 && /\d/.test(raw) && !raw.includes(" "));
               if (!isIdentifier) continue;
               const name = contactsMap.get(contactKey(raw));
               if (name) matchedNames[person.participant_id] = name;
@@ -970,8 +986,7 @@ export default function Home() {
   const displayedReport = report
     ? withParticipantNames(report, displayedNames)
     : null;
-  const loadingReport =
-    readChatIdFromUrl() != null && !reportsLoaded && !report && homeView;
+  const loadingReport = hasUrlChat && !reportsLoaded && !report && homeView;
   const unavailableFormat = unavailableUploadFormat(file);
   const reportParticipants = report?.participants ?? [];
   const participantsToName = reportParticipants;
@@ -993,16 +1008,20 @@ export default function Home() {
     : [];
   const podium2nd = podiumRows[1] ?? null;
   const podium3rd = podiumRows[2] ?? null;
-  const humorLeaderboard = displayedReport?.leaderboards?.humor;
-  const totalPositiveReactions =
-    humorLeaderboard &&
-    typeof humorLeaderboard === "object" &&
-    !Array.isArray(humorLeaderboard) &&
-    typeof (humorLeaderboard as { total_positive_reactions?: unknown })
-      .total_positive_reactions === "number"
-      ? (humorLeaderboard as { total_positive_reactions: number })
-          .total_positive_reactions
-      : leaderboardRows(displayedReport ?? ({} as Report), "comedian").reduce(
+  const mainCharacterLeaderboard =
+    displayedReport?.leaderboards?.main_character;
+  const totalReactions =
+    mainCharacterLeaderboard &&
+    typeof mainCharacterLeaderboard === "object" &&
+    !Array.isArray(mainCharacterLeaderboard) &&
+    typeof (mainCharacterLeaderboard as { total_reactions?: unknown })
+      .total_reactions === "number"
+      ? (mainCharacterLeaderboard as { total_reactions: number })
+          .total_reactions
+      : leaderboardRows(
+          displayedReport ?? ({} as Report),
+          "main_character",
+        ).reduce(
           (total, row) => total + (row.total_reactions ?? 0),
           0,
         );
@@ -1013,7 +1032,7 @@ export default function Home() {
   const animParticipants = useAnimatedCount(
     displayedReport?.conversation_summary.participant_count ?? 0,
   );
-  const animReactions = useAnimatedCount(totalPositiveReactions);
+  const animReactions = useAnimatedCount(totalReactions);
 
   useEffect(() => {
     if (!activeSlide) return;
@@ -1604,7 +1623,7 @@ export default function Home() {
                 <strong>{animParticipants}</strong>
               </div>
               <div>
-                <span>Positive reactions</span>
+                <span>Reactions</span>
                 <strong>{animReactions}</strong>
               </div>
             </div>
@@ -1902,7 +1921,7 @@ export default function Home() {
                                           >
                                             <div>
                                               <strong>
-                                                {index + 1}. {row.participant}
+                                                {`${index + 1}. ${row.participant}`}
                                               </strong>
                                               <span>
                                                 {rankingDetail(

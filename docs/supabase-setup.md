@@ -23,7 +23,7 @@ The database stores aggregate report JSON, not the uploaded raw file or raw mess
 3. Copy the complete contents of `supabase/schema.sql` into the editor.
 4. Click **Run**.
 
-The schema enables Row Level Security and only permits an authenticated user to read, insert, update, or delete rows whose `user_id` matches their own Supabase Auth user. Saved reports contain compact aggregate analytics; large per-message humor evidence is kept out of saved history so large chats do not hit Supabase statement timeouts.
+The schema enables Row Level Security and only permits an authenticated user to read, insert, update, or delete rows whose `user_id` matches their own Supabase Auth user. Saved reports contain compact aggregate analytics; large per-message reaction evidence is kept out of saved history so large chats do not hit Supabase statement timeouts.
 
 If the table already exists, rerun the complete `supabase/schema.sql` file after pulling code updates. The `grant update` statement and update policy are needed when saving participant names.
 
@@ -89,7 +89,7 @@ Open [http://localhost:3000](http://localhost:3000), click **Continue with Googl
 
 ## 7. Troubleshoot large-chat saves
 
-If an older version displayed the analysis but showed `canceling statement due to statement timeout`, the analysis completed but Supabase rejected the oversized saved JSON. Pull the updated code, rerun `supabase/schema.sql` in the SQL Editor, restart both local servers, and analyze the chat again. The new version saves the summary and leaderboards without per-message humor evidence and does not request the large JSON back from Supabase after insertion.
+If an older version displayed the analysis but showed `canceling statement due to statement timeout`, the analysis completed but Supabase rejected the oversized saved JSON. Pull the updated code, rerun `supabase/schema.sql` in the SQL Editor, restart both local servers, and analyze the chat again. The new version saves the summary and leaderboards without per-message reaction evidence and does not request the large JSON back from Supabase after insertion.
 
 ## 8. Production checklist
 

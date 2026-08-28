@@ -9,7 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .models import CanonicalDataset, Message, Reaction, ReplyEdge
-from .normalization import extract_emojis, extract_links
+from .normalization import extract_emojis, extract_links, normalize_contact, tokenize_words
 
 LAUGH_RE = re.compile(r"\b(?:lol+|lmao+|lmfao+|haha+|rofl|dead|dying)\b", re.IGNORECASE)
 SURPRISE_RE = re.compile(r"\b(?:omg|no way|what|wtf|wow|shut up)\b", re.IGNORECASE)
@@ -17,11 +17,12 @@ AGREEMENT_RE = re.compile(r"\b(?:exactly|same|this|true|facts|yes|yesss|right)\b
 LOW_SIGNAL_RE = re.compile(r"^(?:ok|okay|k|kk|sure|yep|yup|👍|\.+)$", re.IGNORECASE)
 QUESTION_RE = re.compile(r"\?")
 LAUGH_EMOJIS = {"😂", "🤣", "😆", "😹", "😭"}
-POSITIVE_REACTIONS = {"❤️", "❤", "💕", "💖", "💗", "💓", "💞", "💘", "💝", "😍", "😂", "🤣", "😆", "👍", "👏", "🔥"}
 
 LONG_SILENCE_SECONDS = 4 * 60 * 60
 TIME_TRAVELER_MIN_SECONDS = LONG_SILENCE_SECONDS
 GRAMMAR_MIN_MESSAGES = 5
+WORDSMITH_MIN_MESSAGES = 20
+TRENDSETTER_MIN_SPREAD = 1
 FORMAL_GRAMMAR_MARKERS = re.compile(
     r"\b(?:please|thank you|thanks|could you|would you|however|therefore|although|"
     r"in addition|for example|to clarify|as a result|i would|we should|kindly)\b",
@@ -36,8 +37,7 @@ def _message_map(dataset: CanonicalDataset) -> dict[str, Message]:
 def _reaction_map(dataset: CanonicalDataset) -> dict[str, list[Reaction]]:
     result: dict[str, list[Reaction]] = defaultdict(list)
     for reaction in dataset.reactions:
-        if reaction.reaction_emoji in POSITIVE_REACTIONS or reaction.reaction_type == "positive":
-            result[reaction.message_id].append(reaction)
+        result[reaction.message_id].append(reaction)
     return result
 
 
@@ -85,7 +85,7 @@ def attribute_replies(dataset: CanonicalDataset, window_seconds: int = 60) -> li
     return edges
 
 
-def _add_humor_volume_weight(rankings: list[dict[str, Any]], volume_weight: float = 0.35) -> None:
+def _add_mc_volume_weight(rankings: list[dict[str, Any]], volume_weight: float = 0.35) -> None:
     """Blend average reaction impact with total positive reaction volume."""
     if not rankings:
         return
@@ -99,8 +99,8 @@ def _add_humor_volume_weight(rankings: list[dict[str, Any]], volume_weight: floa
         row["ranking_score"] = round(100 * (intensity_weight * reaction_signal + volume_weight * volume_signal), 1)
 
 
-def humor_index(dataset: CanonicalDataset, window_seconds: int = 60) -> dict[str, Any]:
-    del window_seconds  # Kept in the signature for report compatibility; replies no longer affect Humor.
+def main_character_index(dataset: CanonicalDataset, window_seconds: int = 60) -> dict[str, Any]:
+    del window_seconds  # Kept in the signature for report compatibility; replies no longer affect the Main Character.
     messages = [message for message in dataset.sorted_messages() if not message.is_system_message and not message.is_deleted]
     reactions = _reaction_map(dataset)
     possible_reactors = max(1, len(dataset.participants) - 1)
@@ -111,10 +111,11 @@ def humor_index(dataset: CanonicalDataset, window_seconds: int = 60) -> dict[str
     evidence_by_message: dict[str, dict[str, Any]] = {}
 
     for message in messages:
-        # Every positive reaction type contributes one equal unit. We deduplicate
-        # the same actor/type pair so repeated export rows cannot inflate a score.
-        positive_reactions = reactions.get(message.message_id, [])
-        unique_reactions = {(reaction.actor_id, reaction.reaction_emoji) for reaction in positive_reactions if reaction.actor_id != message.sender_id}
+        # Every reaction type (positive, negative, neutral) contributes one equal
+        # unit. We deduplicate the same actor/type pair so repeated export rows
+        # cannot inflate a score.
+        message_reactions = reactions.get(message.message_id, [])
+        unique_reactions = {(reaction.actor_id, reaction.reaction_emoji) for reaction in message_reactions if reaction.actor_id != message.sender_id}
         reaction_count = len(unique_reactions)
         reaction_signal = min(1.0, reaction_count / possible_reactors)
         message_score = reaction_signal
@@ -134,15 +135,15 @@ def humor_index(dataset: CanonicalDataset, window_seconds: int = 60) -> dict[str
         reaction_rate = 100 * reacted_messages[sender_id] / message_count
         average_score = sum(scores) / message_count
         rankings.append({"participant_id": sender_id, "participant": participants.get(sender_id, sender_id), "score": round(100 * average_score, 1), "average_reactions": round(average_reactions, 3), "total_reactions": reaction_totals[sender_id], "reacted_messages": reacted_messages[sender_id], "reaction_rate": round(reaction_rate, 1), "reaction_types": dict(reaction_types_by_sender[sender_id]), "eligible_messages": message_count, "confidence": "high" if message_count >= 50 else "medium" if message_count >= 10 else "low"})
-    _add_humor_volume_weight(rankings)
+    _add_mc_volume_weight(rankings)
     rankings.sort(key=lambda item: (item["ranking_score"], item["score"], item["total_reactions"]), reverse=True)
     return {
-        "title": "The Comedian",
-        "metric": "humor_index",
+        "title": "The Main Character",
+        "metric": "main_character_index",
         "rankings": rankings,
-        "reaction_policy": "All positive reaction types have equal base weight within this conversation. Humor uses only native positive reactions; replies, reply timing, and text content do not affect the score. The displayed ranking blends 65% average reaction impact with 35% log-scaled total positive reaction volume.",
-        "total_positive_reactions": sum(reaction_totals.values()),
-        "messages_with_positive_reactions": sum(reacted_messages.values()),
+        "reaction_policy": "All native reaction types (positive, negative, and neutral) carry equal base weight within this conversation; a like, laugh, dislike, or question all count the same. Replies, reply timing, and text content do not affect the score. The displayed ranking blends 65% average reaction impact with 35% log-scaled total reaction volume.",
+        "total_reactions": sum(reaction_totals.values()),
+        "messages_with_reactions": sum(reacted_messages.values()),
         "message_evidence": evidence_by_message,
     }
 
@@ -332,6 +333,73 @@ def grammar_police_metrics(dataset: CanonicalDataset, messages: list[Message]) -
     return sorted(rows, key=lambda row: (row["grammar_score"], row["grammar_messages"]), reverse=True)
 
 
+def wordsmith_metrics(dataset: CanonicalDataset, messages: list[Message]) -> list[dict[str, Any]]:
+    """Rank participants by the size of their unique (non-stopword) vocabulary."""
+    names = _participant_names(dataset)
+    wordset: dict[str, set[str]] = defaultdict(set)
+    text_count: Counter[str] = Counter()
+    total_count: Counter[str] = Counter()
+    for message in messages:
+        if not message.text:
+            continue
+        words = tokenize_words(message.text)
+        if not words:
+            continue
+        text_count[message.sender_id] += 1
+        wordset[message.sender_id].update(words)
+        total_count[message.sender_id] += len(words)
+    rows = []
+    for participant_id, name in names.items():
+        rows.append(
+            {
+                "participant": name,
+                "participant_id": participant_id,
+                "unique_words": len(wordset.get(participant_id, set())),
+                "total_words": total_count.get(participant_id, 0),
+                "eligible_messages": text_count.get(participant_id, 0),
+                "minimum_sample": WORDSMITH_MIN_MESSAGES,
+                "scope": "selected conversation",
+            }
+        )
+    return sorted(rows, key=lambda row: (row["unique_words"], row["total_words"], row["participant"]), reverse=True)
+
+
+def trendsetter_metrics(dataset: CanonicalDataset, messages: list[Message]) -> list[dict[str, Any]]:
+    """Rank participants by vocabulary they introduced first that others adopted."""
+    names = _participant_names(dataset)
+    first_user: dict[str, str] = {}
+    user_words: dict[str, set[str]] = defaultdict(set)
+    for message in messages:
+        words = set(tokenize_words(message.text)) if message.text else set()
+        if not words:
+            continue
+        participant_id = message.sender_id
+        user_words[participant_id].update(words)
+        for word in words:
+            if word not in first_user:
+                first_user[word] = participant_id
+    spread: dict[str, set[str]] = defaultdict(set)
+    for participant_id, words in user_words.items():
+        for word in words:
+            spread[word].add(participant_id)
+    counts: Counter[str] = Counter()
+    for word, introducer in first_user.items():
+        others = spread.get(word, set()) - {introducer}
+        if len(others) >= TRENDSETTER_MIN_SPREAD:
+            counts[introducer] += 1
+    rows = []
+    for participant_id, name in names.items():
+        rows.append(
+            {
+                "participant": name,
+                "participant_id": participant_id,
+                "first_use_terms": counts.get(participant_id, 0),
+                "scope": "selected conversation",
+            }
+        )
+    return sorted(rows, key=lambda row: (row["first_use_terms"], row["participant"]), reverse=True)
+
+
 def _add_volume_weight(rows: list[dict[str, Any]], intensity_key: str, volume_key: str, volume_weight: float = 0.35) -> None:
     """Blend a normalized rate with log-scaled total volume.
 
@@ -422,15 +490,21 @@ def build_report(dataset: CanonicalDataset, progress_callback: Any | None = None
     participants = {participant.participant_id: participant.display_name for participant in dataset.participants}
     if progress_callback:
         progress_callback(45, "Preparing messages")
-    humor = humor_index(dataset)
+    main_character = main_character_index(dataset)
     if progress_callback:
-        progress_callback(65, "Calculating reaction-based humor")
+        progress_callback(65, "Calculating reaction-based Main Character")
     metrics = basic_metrics(dataset)
+    metrics.update(
+        {
+            "wordsmith": wordsmith_metrics(dataset, messages),
+            "trendsetter": trendsetter_metrics(dataset, messages),
+        }
+    )
     if progress_callback:
         progress_callback(85, "Calculating activity and style metrics")
     media_winner = max(metrics["media_spammer"], key=lambda item: item["ranking_score"], default=None)
     titles = {
-        "comedian": humor["rankings"][0] if humor["rankings"] else None,
+        "main_character": main_character["rankings"][0] if main_character["rankings"] else None,
         "double_texter": max(metrics["double_texter"], key=lambda item: item["rate"], default=None),
         "novelist": max(metrics["novelist"], key=lambda item: item["average_words"], default=None),
         "conversation_starter": max(metrics["conversation_starter"], key=lambda item: item["ranking_score"], default=None),
@@ -442,8 +516,10 @@ def build_report(dataset: CanonicalDataset, progress_callback: Any | None = None
         "ghost": min(metrics["ghost"], key=lambda item: (item["message_count"], item["active_days"]), default=None),
         "time_traveler": max((item for item in metrics["time_traveler"] if item["late_reply_count"] > 0), key=lambda item: item["ranking_score"], default=None),
         "grammar_police": max((item for item in metrics["grammar_police"] if item["grammar_messages"] >= item["minimum_sample"]), key=lambda item: item["grammar_score"], default=None),
+        "wordsmith": max((item for item in metrics["wordsmith"] if item["eligible_messages"] >= item["minimum_sample"]), key=lambda item: item["unique_words"], default=None),
+        "trendsetter": max((item for item in metrics["trendsetter"] if item["first_use_terms"] > 0), key=lambda item: item["first_use_terms"], default=None),
     }
-    result = {"report_metadata": {"analytics_version": "0.2.0", "source_format": dataset.conversation.source_format, "timezone": dataset.conversation.timezone, "privacy_mode": "local_or_ephemeral_cloud"}, "conversation_summary": {"title": dataset.conversation.title, "message_count": len(messages), "participant_count": len(participants), "date_start": min((message.timestamp_utc.isoformat() for message in messages), default=None), "date_end": max((message.timestamp_utc.isoformat() for message in messages), default=None)}, "participants": [{"participant_id": key, "display_name": value} for key, value in participants.items()], "titles": titles, "leaderboards": {"humor": humor, **metrics}, "warnings": dataset.warnings, "quality": {"reply_attribution": "explicit when available, chronological heuristic otherwise", "raw_text_retained": False,            "superlative_sample_rules": {"grammar_police": f"requires at least {GRAMMAR_MIN_MESSAGES} text messages"}}}
+    result = {"report_metadata": {"analytics_version": "0.3.0", "source_format": dataset.conversation.source_format, "timezone": dataset.conversation.timezone, "privacy_mode": "local_or_ephemeral_cloud"}, "conversation_summary": {"title": dataset.conversation.title, "message_count": len(messages), "participant_count": len(participants), "date_start": min((message.timestamp_utc.isoformat() for message in messages), default=None), "date_end": max((message.timestamp_utc.isoformat() for message in messages), default=None)}, "participants": [{"participant_id": key, "display_name": value} for key, value in participants.items()], "titles": titles, "leaderboards": {"main_character": main_character, **metrics}, "warnings": dataset.warnings, "quality": {"reply_attribution": "explicit when available, chronological heuristic otherwise", "raw_text_retained": False,            "superlative_sample_rules": {"grammar_police": f"requires at least {GRAMMAR_MIN_MESSAGES} text messages", "wordsmith": f"requires at least {WORDSMITH_MIN_MESSAGES} text messages"}}}
     if progress_callback:
         progress_callback(95, "Finalizing report")
     return result

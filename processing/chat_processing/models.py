@@ -21,7 +21,6 @@ class Participant:
     participant_id: str
     display_name: str
     conversation_id: str
-    source_participant_id: str | None = None
     is_system_or_unknown: bool = False
 
 

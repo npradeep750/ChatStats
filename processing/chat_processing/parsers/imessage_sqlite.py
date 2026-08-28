@@ -10,7 +10,7 @@ import unicodedata
 
 from ..models import CanonicalDataset, Conversation, Message, Participant, Reaction
 from ..imessage_attributed import _Decoder, decode_mentions
-from ..normalization import classify_media, extract_emojis, extract_links, normalize_text, parse_timestamp, stable_id
+from ..normalization import classify_media, extract_emojis, extract_links, normalize_contact, normalize_text, parse_timestamp, stable_id
 
 
 # iMessage stores native tapbacks as rows in `message`, rather than as a

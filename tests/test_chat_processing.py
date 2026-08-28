@@ -7,9 +7,9 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 
-from processing.chat_processing.analytics import basic_metrics, classify_reply, humor_index
+from processing.chat_processing.analytics import basic_metrics, classify_reply, main_character_index, trendsetter_metrics, wordsmith_metrics
 from processing.chat_processing.models import CanonicalDataset, Conversation, Message, Participant, Reaction
-from processing.chat_processing.normalization import extract_emojis
+from processing.chat_processing.normalization import extract_emojis, normalize_contact, stable_id, stem_word, tokenize_words
 from processing.chat_processing.pipeline import list_conversations, parse_bytes, process_file
 
 
@@ -60,22 +60,34 @@ class AnalyticsTests(unittest.TestCase):
             [message("m1", "a", 0, "joke one"), message("m2", "b", 10, "joke two")],
             [Reaction("r1", "m1", "b", "❤️"), Reaction("r2", "m2", "a", "😂")],
         )
-        result = humor_index(dataset)
+        result = main_character_index(dataset)
         self.assertEqual(result["message_evidence"]["m1"]["reaction_count"], 1)
         self.assertEqual(result["message_evidence"]["m2"]["reaction_count"], 1)
-        self.assertEqual(result["reaction_policy"].startswith("All positive reaction types have equal"), True)
+        self.assertEqual(result["reaction_policy"].startswith("All native reaction types"), True)
 
-    def test_replies_do_not_contribute_to_humor(self) -> None:
+    def test_all_reaction_types_contribute_equally(self) -> None:
+        dataset = CanonicalDataset(
+            Conversation("c", "Test", "json"),
+            [Participant("a", "Ava", "c"), Participant("b", "Ben", "c")],
+            [message("m1", "a", 0, "take one"), message("m2", "b", 10, "take two")],
+            [Reaction("r1", "m1", "b", "👎", "negative"), Reaction("r2", "m2", "a", "❓", "neutral")],
+        )
+        result = main_character_index(dataset)
+        self.assertEqual(result["message_evidence"]["m1"]["reaction_count"], 1)
+        self.assertEqual(result["message_evidence"]["m2"]["reaction_count"], 1)
+        self.assertEqual(result["total_reactions"], 2)
+
+    def test_replies_do_not_contribute_to_main_character(self) -> None:
         dataset = CanonicalDataset(
             Conversation("c", "Test", "json"),
             [Participant("a", "Ava", "c"), Participant("b", "Ben", "c")],
             [message("m1", "a", 0, "setup"), message("m2", "b", 5, "HAHA 😂"), message("m3", "a", 1000, "quiet")],
         )
-        result = humor_index(dataset)
+        result = main_character_index(dataset)
         self.assertEqual(result["message_evidence"]["m1"]["reaction_count"], 0)
         self.assertEqual(result["message_evidence"]["m1"]["message_score"], 0)
 
-    def test_humor_volume_weight_rewards_repeated_reactions(self) -> None:
+    def test_main_character_volume_weight_rewards_repeated_reactions(self) -> None:
         messages = [message("a1", "a", 0, "joke")]
         messages.extend(message(f"b{index}", "b", index, "joke") for index in range(1, 11))
         reactions = [Reaction("ra", "a1", "b", "😂")]
@@ -86,19 +98,19 @@ class AnalyticsTests(unittest.TestCase):
             messages,
             reactions,
         )
-        result = humor_index(dataset)
+        result = main_character_index(dataset)
         rows = {row["participant"]: row for row in result["rankings"]}
         self.assertEqual(rows["Ava"]["score"], rows["Ben"]["score"])
         self.assertGreater(rows["Ben"]["ranking_score"], rows["Ava"]["ranking_score"])
 
-    def test_humor_scores_use_absolute_audience_impact(self) -> None:
+    def test_main_character_scores_use_absolute_audience_impact(self) -> None:
         dataset = CanonicalDataset(
             Conversation("c", "Test", "json"),
             [Participant("a", "Ava", "c"), Participant("b", "Ben", "c"), Participant("c", "Cam", "c")],
             [message("m1", "a", 0, "setup"), message("m2", "b", 5, "HAHA 😂"), message("m3", "c", 1000, "quiet")],
             [Reaction("r1", "m1", "b", "❤️"), Reaction("r2", "m1", "c", "😂")],
         )
-        result = humor_index(dataset)
+        result = main_character_index(dataset)
         scores = {row["participant"]: row["score"] for row in result["rankings"]}
         self.assertGreater(scores["Ava"], scores["Ben"])
         self.assertNotEqual(len({row["score"] for row in result["rankings"]}), 1)
@@ -353,6 +365,87 @@ class ParserTests(unittest.TestCase):
         dataset = parse_bytes("chat.db", raw, conversation_id=choices[1]["conversation_id"])
         self.assertEqual(dataset.conversation.title, "Weekend Group")
         self.assertEqual(dataset.messages[0].text, "Weekend hello")
+
+
+    def test_sqlite_parser_builds_mention_index_and_source_participant_id(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".sqlite") as handle:
+            connection = sqlite3.connect(handle.name)
+            connection.executescript("""
+                CREATE TABLE handle (id TEXT);
+                CREATE TABLE message (text TEXT, handle_id INTEGER, date INTEGER, is_from_me INTEGER);
+            """)
+            connection.execute("INSERT INTO handle (id) VALUES ('ben@example.com')")
+            connection.execute("INSERT INTO handle (id) VALUES ('+14088879275')")
+            connection.execute("INSERT INTO message VALUES ('hi ben', 1, 1767225600000000000, 0)")
+            connection.execute("INSERT INTO message VALUES ('hey', 2, 1767225601000000000, 1)")
+            connection.commit()
+            connection.close()
+            with open(handle.name, "rb") as sqlite_file:
+                raw = sqlite_file.read()
+        dataset = parse_bytes("chat.db", raw)
+        ben = next(participant for participant in dataset.participants if participant.display_name == "ben@example.com")
+        me = next(participant for participant in dataset.participants if participant.display_name == "Me")
+        self.assertEqual(ben.source_participant_id, "ben@example.com")
+        ben_id = stable_id("participant", "ben@example.com")
+        me_id = stable_id("participant", "me")
+        self.assertEqual(dataset.mention_participant_index["ben@example.com"], ben_id)
+        self.assertEqual(dataset.mention_participant_index["14088879275"], me_id)
+
+
+class WordMetricTests(unittest.TestCase):
+    def test_tokenize_words_strips_stopwords_and_short_tokens(self) -> None:
+        self.assertEqual(tokenize_words("The cats are at the park"), ["cats", "park"])
+        self.assertEqual(tokenize_words("hi ok 12 !!!"), [])
+
+    def test_normalize_contact_handles_phones_and_emails(self) -> None:
+        self.assertEqual(normalize_contact("+1 (408) 887-9275"), "14088879275")
+        self.assertEqual(normalize_contact("14088879275"), "14088879275")
+        self.assertEqual(normalize_contact("Ben@Example.com"), "ben@example.com")
+
+    def test_wordsmith_requires_minimum_sample(self) -> None:
+        dataset = CanonicalDataset(
+            Conversation("c", "Test", "json"),
+            [Participant("a", "Ava", "c"), Participant("b", "Ben", "c")],
+            [message(f"a{index}", "a", index, "unique new vocabulary phrase") for index in range(21)]
+            + [message("b1", "b", 100, "only")],
+        )
+        rows = {row["participant_id"]: row for row in wordsmith_metrics(dataset, dataset.messages)}
+        self.assertEqual(rows["a"]["unique_words"], 4)
+        self.assertEqual(rows["a"]["eligible_messages"], 21)
+        self.assertEqual(rows["b"]["eligible_messages"], 0)
+        self.assertLess(rows["b"]["eligible_messages"], rows["b"]["minimum_sample"])
+
+    def test_trendsetter_counts_first_introductions_others_adopted(self) -> None:
+        messages = [
+            message("a1", "a", 0, "laser fencing"),
+            message("b1", "b", 1, "laser"),
+            message("c1", "c", 2, "laser"),
+            message("b2", "b", 3, "uncommon"),
+        ]
+        dataset = CanonicalDataset(
+            Conversation("c", "Test", "json"),
+            [Participant("a", "Ava", "c"), Participant("b", "Ben", "c"), Participant("c", "Cam", "c")],
+            messages,
+        )
+        rows = {row["participant_id"]: row for row in trendsetter_metrics(dataset, messages)}
+        self.assertEqual(rows["a"]["first_use_terms"], 1)
+        self.assertEqual(rows["b"]["first_use_terms"], 0)
+
+    def test_stem_word_basic_suffixes(self) -> None:
+        self.assertEqual(stem_word("running"), "run")
+        self.assertEqual(stem_word("runner"), "run")
+        self.assertEqual(stem_word("cats"), "cat")
+        self.assertEqual(stem_word("lovely"), "love")
+        self.assertEqual(stem_word("quickly"), "quick")
+        self.assertEqual(stem_word("happiness"), "happi")
+        # Short words pass through unchanged.
+        self.assertEqual(stem_word("ok"), "ok")
+        self.assertEqual(stem_word("the"), "the")
+
+    def test_stem_word_over_merge_guard(self) -> None:
+        # "news" and "new" should not merge.
+        self.assertEqual(stem_word("news"), "news")
+        self.assertEqual(stem_word("newly"), "new")
 
 
 if __name__ == "__main__":
