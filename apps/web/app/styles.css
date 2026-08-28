@@ -215,6 +215,7 @@ body {
   overflow-y: auto;
   min-width: 0;
   padding-left: 24px;
+  padding-right: 24px;
 }
 .hero {
   max-width: 680px;
@@ -375,6 +376,13 @@ body {
   font-size: 13px;
   color: var(--muted);
 }
+.privacy {
+  margin: 18px 0 12px;
+}
+.note {
+  margin: 24px 44px 28px;
+  text-align: center;
+}
 .error {
   color: #dc2626;
 }
@@ -453,6 +461,11 @@ h2 {
   .deck-counter-row {
     flex-wrap: wrap;
     gap: 8px;
+    margin: 0 20px;
+    max-width: none;
+  }
+  .note {
+    margin: 16px 20px 24px;
   }
 }
 
@@ -1037,6 +1050,7 @@ h2 {
 }
 .deck-counter {
   animation: counterIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  padding-left: 16px;
 }
 
 /* Note text fade */
@@ -1105,7 +1119,7 @@ h2 {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 /* ── Autoplay toggle ──────────────────────────────────────────── */
@@ -1113,9 +1127,11 @@ h2 {
   display: flex;
   align-items: center;
   gap: 14px;
+  margin: 0 44px;
+  max-width: 952px;
 }
 .autoplay-toggle {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 5px;
   border: 1px solid #d7e5f0;
@@ -1149,23 +1165,6 @@ h2 {
 /* ── Dot viewed state ─────────────────────────────────────────── */
 .deck-dot.viewed {
   background: #60a8d3;
-}
-
-/* ── Note dismiss transition ───────────────────────────────────── */
-.note {
-  transition:
-    opacity 0.4s ease,
-    max-height 0.4s ease,
-    margin 0.4s ease,
-    padding 0.4s ease;
-  max-height: 80px;
-  overflow: hidden;
-}
-.note.dismissed {
-  opacity: 0;
-  max-height: 0;
-  margin: 0;
-  padding: 0;
 }
 
 /* ── Panel button hover/focus/active states ────────────────────── */
@@ -1248,9 +1247,6 @@ h2 {
   }
   .ranking-collapse-wrapper {
     grid-template-rows: 1fr !important;
-  }
-  .note.dismissed {
-    display: none !important;
   }
   .deck-winner.podium .winner-spotlight {
     display: none !important;

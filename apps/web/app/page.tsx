@@ -421,7 +421,6 @@ export default function Home() {
 
   const [autoPlay, setAutoPlay] = useState(false);
   const [viewedSlides, setViewedSlides] = useState<Set<number>>(new Set([0]));
-  const [noteDismissed, setNoteDismissed] = useState(false);
   const [podiumRevealed, setPodiumRevealed] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [typedText, setTypedText] = useState("");
@@ -662,7 +661,6 @@ export default function Home() {
           setPodiumRevealed(false);
           setAutoPlay(false);
           setViewedSlides(new Set([0]));
-          setNoteDismissed(false);
           setActiveSavedReportId(await saveReport(current.report));
           setHomeView(false);
           finished = true;
@@ -773,39 +771,42 @@ export default function Home() {
     if (!activeSlide) return;
     setWinnerRevealed(false);
     setPodiumRevealed(false);
-    if (!autoPlay) return;
-    const revealTimer = window.setTimeout(() => setWinnerRevealed(true), 2500);
-    return () => window.clearTimeout(revealTimer);
-  }, [report, activeSlide?.[0], autoPlay]);
+  }, [report, activeSlide?.[0]]);
 
   useEffect(() => {
-    if (!winnerRevealed) {
-      setPodiumRevealed(false);
-      return;
-    }
-    if (!autoPlay) return;
-    const podiumTimer = window.setTimeout(() => setPodiumRevealed(true), 2000);
-    return () => window.clearTimeout(podiumTimer);
-  }, [winnerRevealed, autoPlay]);
-
-  useEffect(() => {
-    if (!autoPlay || !availableSuperlatives.length) return;
-    const interval = window.setInterval(() => {
-      setSlideIndex((current) => {
-        if (current >= availableSuperlatives.length - 1) return 0;
-        return current + 1;
-      });
+    if (!activeSlide || !autoPlay) return;
+    const PRE = 2500,
+      REVEAL = 3000,
+      PODIUM = 6000;
+    const advance = () => {
       setSlideDirection("right");
       setExpandedSuperlative(null);
-      setWinnerRevealed(false);
-      setPodiumRevealed(false);
-    }, 12000);
-    return () => window.clearInterval(interval);
-  }, [autoPlay, availableSuperlatives.length]);
-
-  useEffect(() => {
-    if (winnerRevealed && !noteDismissed) setNoteDismissed(true);
-  }, [winnerRevealed, noteDismissed]);
+      setSlideIndex((current) =>
+        current >= availableSuperlatives.length - 1 ? 0 : current + 1,
+      );
+    };
+    const timers: number[] = [];
+    if (!winnerRevealed) {
+      timers.push(window.setTimeout(() => setWinnerRevealed(true), PRE));
+      timers.push(
+        window.setTimeout(() => setPodiumRevealed(true), PRE + REVEAL),
+      );
+      timers.push(window.setTimeout(advance, PRE + REVEAL + PODIUM));
+    } else if (!podiumRevealed) {
+      timers.push(window.setTimeout(() => setPodiumRevealed(true), REVEAL));
+      timers.push(window.setTimeout(advance, REVEAL + PODIUM));
+    } else {
+      timers.push(window.setTimeout(advance, PODIUM));
+    }
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [
+    report,
+    autoPlay,
+    activeSlide?.[0],
+    winnerRevealed,
+    podiumRevealed,
+    availableSuperlatives.length,
+  ]);
 
   useEffect(() => {
     setViewedSlides((prev) => new Set(prev).add(activeSlideIndex));
@@ -832,10 +833,19 @@ export default function Home() {
               {accountMenuOpen && (
                 <div className="account-dropdown">
                   <button onClick={signOut}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                      <polyline points="16 17 21 12 16 7"/>
-                      <line x1="21" y1="12" x2="9" y2="12"/>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16 17 21 12 16 7" />
+                      <line x1="21" y1="12" x2="9" y2="12" />
                     </svg>
                     Sign out
                   </button>
@@ -886,7 +896,9 @@ export default function Home() {
             savedReports.map((item) => (
               <div className="history-item" key={item.id}>
                 <button
-                  className={item.id === activeSavedReportId ? "active-chat" : undefined}
+                  className={
+                    item.id === activeSavedReportId ? "active-chat" : undefined
+                  }
                   onClick={() => {
                     setHomeView(false);
                     setReport(item.report);
@@ -897,7 +909,6 @@ export default function Home() {
                     setPodiumRevealed(false);
                     setAutoPlay(false);
                     setViewedSlides(new Set([0]));
-                    setNoteDismissed(false);
                     setActiveSavedReportId(item.id);
                   }}
                 >
@@ -935,53 +946,6 @@ export default function Home() {
               </h1>
               <p className="lede">
                 Upload an iMessage export and get unexpected superlatives.
-              </p>
-            </section>
-            <section className="panel instructions-panel">
-              <h2>How to get your chat file</h2>
-              <details open>
-                <summary>iMessage on a Mac</summary>
-                <ol>
-                  <li>
-                    Open Finder and choose <strong>Go → Go to Folder</strong>.
-                  </li>
-                  <li>
-                    Enter <code>~/Library/Messages/</code> and press Enter.
-                  </li>
-                  <li>
-                    Make a copy of <code>chat.db</code> and upload the copy.
-                    Never move or edit the original.
-                  </li>
-                  <li>
-                    If the database contains multiple conversations, the app
-                    will show a list so you can choose the group chat to
-                    analyze.
-                  </li>
-                  <li>
-                    Do not upload screenshots, PDFs, a media folder, or your
-                    entire phone backup.
-                  </li>
-                </ol>
-                <p className="privacy">
-                  Apple usually stores phone numbers and emails in{" "}
-                  <code>chat.db</code>, not your Contacts names. After analysis,
-                  use the <strong>Name participants</strong> panel to label each
-                  person. Those labels are saved with the report.
-                </p>
-              </details>
-              <div className="locked-format" aria-disabled="true">
-                <span>Instagram group chat</span>
-                <span className="coming-soon-pill">Coming soon · locked</span>
-              </div>
-              <div className="locked-format" aria-disabled="true">
-                <span>CSV file</span>
-                <span className="coming-soon-pill">Coming soon · locked</span>
-              </div>
-              <hr className="format-divider" />
-              <p className="privacy">
-                Currently supported: iMessage <code>chat.db</code>,{" "}
-                <code>.sqlite</code>, or <code>.sqlite3</code> files. Instagram
-                and CSV uploads are temporarily unavailable.
               </p>
             </section>
             <section className="panel">
@@ -1276,6 +1240,53 @@ export default function Home() {
               </p>
               {error && <p className="error">{error}</p>}
             </section>
+            <section className="panel instructions-panel">
+              <h2>How to get your chat file</h2>
+              <details open>
+                <summary>iMessage on a Mac</summary>
+                <ol>
+                  <li>
+                    Open Finder and choose <strong>Go → Go to Folder</strong>.
+                  </li>
+                  <li>
+                    Enter <code>~/Library/Messages/</code> and press Enter.
+                  </li>
+                  <li>
+                    Make a copy of <code>chat.db</code> and upload the copy.
+                    Never move or edit the original.
+                  </li>
+                  <li>
+                    If the database contains multiple conversations, the app
+                    will show a list so you can choose the group chat to
+                    analyze.
+                  </li>
+                  <li>
+                    Do not upload screenshots, PDFs, a media folder, or your
+                    entire phone backup.
+                  </li>
+                </ol>
+                <p className="privacy">
+                  Apple usually stores phone numbers and emails in{" "}
+                  <code>chat.db</code>, not your Contacts names. After analysis,
+                  use the <strong>Name participants</strong> panel to label each
+                  person. Those labels are saved with the report.
+                </p>
+              </details>
+              <div className="locked-format" aria-disabled="true">
+                <span>Instagram group chat</span>
+                <span className="coming-soon-pill">Coming soon · locked</span>
+              </div>
+              <div className="locked-format" aria-disabled="true">
+                <span>CSV file</span>
+                <span className="coming-soon-pill">Coming soon · locked</span>
+              </div>
+              <hr className="format-divider" />
+              <p className="privacy">
+                Currently supported: iMessage <code>chat.db</code>,{" "}
+                <code>.sqlite</code>, or <code>.sqlite3</code> files. Instagram
+                and CSV uploads are temporarily unavailable.
+              </p>
+            </section>
           </>
         )}
         {displayedReport && (
@@ -1338,7 +1349,9 @@ export default function Home() {
                   </button>
                 </div>
                 <div className="deck-stage">
-                  <div className={`superlative-deck${podiumRevealed ? " podium-deck" : ""}`}>
+                  <div
+                    className={`superlative-deck${podiumRevealed ? " podium-deck" : ""}`}
+                  >
                     <div
                       key={`${activeSlide[0]}-${activeSlideIndex}`}
                       className="deck-slide-content"
@@ -1370,20 +1383,34 @@ export default function Home() {
                           onClick={() => {
                             setAutoPlay(false);
                             setSlideDirection("left");
-                            setSlideIndex((current) => Math.max(0, current - 1));
+                            setSlideIndex((current) =>
+                              Math.max(0, current - 1),
+                            );
                             setExpandedSuperlative(null);
                             setWinnerRevealed(false);
                             setPodiumRevealed(false);
                           }}
                         >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="15 18 9 12 15 6" />
+                          </svg>
                         </button>
                         <button
                           type="button"
                           className="deck-arrow deck-arrow-right"
                           aria-label="Next superlative"
                           disabled={
-                            activeSlideIndex === availableSuperlatives.length - 1
+                            activeSlideIndex ===
+                            availableSuperlatives.length - 1
                           }
                           onClick={() => {
                             setAutoPlay(false);
@@ -1399,7 +1426,18 @@ export default function Home() {
                             setPodiumRevealed(false);
                           }}
                         >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
                         </button>
                         {!winnerRevealed && (
                           <div
@@ -1407,7 +1445,9 @@ export default function Home() {
                             onClick={() => {
                               if (!autoPlay) setWinnerRevealed(true);
                             }}
-                            style={!autoPlay ? { cursor: "pointer" } : undefined}
+                            style={
+                              !autoPlay ? { cursor: "pointer" } : undefined
+                            }
                           >
                             <div className="winner-skeleton">
                               <div className="skeleton-bar skeleton-bar-lg" />
@@ -1428,7 +1468,11 @@ export default function Home() {
                               if (!autoPlay && !podiumRevealed)
                                 setPodiumRevealed(true);
                             }}
-                            style={!autoPlay && !podiumRevealed ? { cursor: "pointer" } : undefined}
+                            style={
+                              !autoPlay && !podiumRevealed
+                                ? { cursor: "pointer" }
+                                : undefined
+                            }
                           >
                             <span className="winner-label">1ST PLACE</span>
                             <h2 className="winner-name">
@@ -1443,7 +1487,12 @@ export default function Home() {
                                 {podium2nd && (
                                   <div className="podium-bar-unit">
                                     <span className="podium-bar-name podium-name-silver">
-                                      <img src="/crown-silver.svg" alt="" className="podium-crown" /> {podium2nd.participant}
+                                      <img
+                                        src="/crown-silver.svg"
+                                        alt=""
+                                        className="podium-crown"
+                                      />{" "}
+                                      {podium2nd.participant}
                                     </span>
                                     <div className="podium-bar podium-silver">
                                       <div className="podium-placement-circle podium-circle-silver">
@@ -1463,7 +1512,12 @@ export default function Home() {
                                 )}
                                 <div className="podium-bar-unit">
                                   <span className="podium-bar-name podium-name-gold">
-                                    <img src="/crown-gold.svg" alt="" className="podium-crown" /> {activeWinner.participant}
+                                    <img
+                                      src="/crown-gold.svg"
+                                      alt=""
+                                      className="podium-crown"
+                                    />{" "}
+                                    {activeWinner.participant}
                                   </span>
                                   <div className="podium-bar podium-gold">
                                     <div className="podium-placement-circle podium-circle-gold">
@@ -1483,7 +1537,12 @@ export default function Home() {
                                 {podium3rd && (
                                   <div className="podium-bar-unit">
                                     <span className="podium-bar-name podium-name-bronze">
-                                      <img src="/crown-bronze.svg" alt="" className="podium-crown" /> {podium3rd.participant}
+                                      <img
+                                        src="/crown-bronze.svg"
+                                        alt=""
+                                        className="podium-crown"
+                                      />{" "}
+                                      {podium3rd.participant}
                                     </span>
                                     <div className="podium-bar podium-bronze">
                                       <div className="podium-placement-circle podium-circle-bronze">
@@ -1543,7 +1602,9 @@ export default function Home() {
                                             }
                                           >
                                             <div>
-                                              <strong>{index + 1}. {row.participant}</strong>
+                                              <strong>
+                                                {index + 1}. {row.participant}
+                                              </strong>
                                               <span>
                                                 {rankingDetail(
                                                   activeSlide[0],
@@ -1606,7 +1667,7 @@ export default function Home() {
                 <p>No superlatives have enough data to display yet.</p>
               </div>
             )}
-            <p className={`note${noteDismissed ? " dismissed" : ""}`}>
+            <p className="note">
               The category and first-place position appear before the winner is
               revealed. Use the arrows or dots to move through the superlatives.
             </p>

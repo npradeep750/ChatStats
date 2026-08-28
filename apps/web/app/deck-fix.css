@@ -11,10 +11,10 @@
   grid-template-rows: auto auto;
   align-items: center;
   column-gap: 16px;
-  width: 100%;
-  max-width: 1040px;
+  width: auto;
+  max-width: 952px;
+  margin: 0 auto 52px;
   padding: 0;
-  margin-bottom: 52px;
 }
 
 .deck-stage .superlative-deck {
