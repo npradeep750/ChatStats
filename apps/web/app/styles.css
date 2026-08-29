@@ -928,30 +928,48 @@ h2 {
     max-height 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .deck-winner.podium .winner-spotlight {
-  flex: 0;
-  max-height: 0;
-  overflow: hidden;
+  position: absolute;
+  inset: 0;
+  flex: none;
+  max-height: none;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: none;
+  z-index: 2;
+  transition: none;
+}
+.deck-winner.podium .winner-spotlight .winner-label {
+  display: none;
+}
+/* The winner name is the SAME element that shows in the spotlight; on
+   podium reveal it is translated (FLIP) down to sit inline beside the
+   crown instead of being replaced by a new podium name. */
+.deck-winner.podium .winner-spotlight .winner-name {
+  animation: none;
+  font-weight: 800;
+  letter-spacing: 1px;
+  transform-origin: left top;
+  transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Once the FLIP animation has settled, hide the flying name so the
+   static in-flow podium name (which reflows correctly on resize/expand)
+   takes over. */
+.deck-winner.podium .winner-spotlight .winner-name.settled {
   opacity: 0;
   pointer-events: none;
-  transition:
-    max-height 0.3s ease,
-    opacity 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 
 /* Phase 3: Podium section */
 .podium-section {
   opacity: 0;
-  transform: translateY(40px);
-  transition:
-    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s,
-    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s;
+  transition: opacity 0.4s ease 0.1s;
   display: flex;
   flex-direction: column;
   flex: 1;
 }
 .deck-winner.podium .podium-section {
   opacity: 1;
-  transform: translateY(0);
 }
 .deck-winner.podium .winner-suspense {
   display: none;
@@ -988,29 +1006,24 @@ h2 {
 }
 .podium-name-gold {
   font-size: 20px;
+  white-space: nowrap;
 }
 .deck-winner.podium .podium-name-gold {
-  font-size: clamp(34px, 6vw, 58px);
-  opacity: 0;
-  animation: podiumNameReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  font-size: 20px;
+  position: relative;
 }
-@keyframes podiumNameReveal {
-  0% {
-    opacity: 0;
-    font-size: clamp(34px, 6vw, 58px);
-    transform: scale(1.3);
-    filter: blur(4px);
-  }
-  50% {
-    opacity: 1;
-    filter: blur(0);
-  }
-  100% {
-    opacity: 1;
-    font-size: 20px;
-    transform: scale(1);
-    filter: blur(0);
-  }
+.deck-winner.podium .podium-name-gold .podium-crown {
+  transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.podium-final-name {
+  font-size: 20px;
+  font-weight: 800;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.podium-final-name.visible {
+  opacity: 1;
 }
 .podium-name-silver,
 .podium-name-bronze {
@@ -1571,9 +1584,6 @@ h2 {
   }
   .podium-detail {
     font-size: 13px;
-  }
-  .deck-winner.podium .winner-spotlight .winner-name {
-    font-size: 14px;
   }
 }
 

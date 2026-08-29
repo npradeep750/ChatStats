@@ -134,7 +134,7 @@ const titleLabels: Record<string, string> = {
   early_bird: "The Early Bird",
   emoji_addict: "The Emoji Addict",
   media_spammer: "The Media Spammer",
-  quick_draw: "The Quick-Draw Responder",
+  quick_draw: "The Prompt Responder",
   ghost: "The Ghost",
   time_traveler: "The Time Traveler",
   grammar_police: "The Grammar Police",
@@ -558,6 +558,10 @@ export default function Home() {
     typeof window === "undefined" ? false : !isSupabaseConfigured(),
   );
   const lastOpenedChatRef = useRef<string | null>(null);
+  const winnerNameRef = useRef<HTMLHeadingElement>(null);
+  const podiumCrownRef = useRef<HTMLImageElement>(null);
+  const podiumFinalNameRef = useRef<HTMLSpanElement>(null);
+  const [winnerSettled, setWinnerSettled] = useState(false);
   const [activeSavedReportId, setActiveSavedReportId] = useState<string | null>(
     null,
   );
@@ -714,6 +718,7 @@ export default function Home() {
     setSlideIndex(0);
     setWinnerRevealed(false);
     setPodiumRevealed(false);
+    setWinnerSettled(false);
     setAutoPlay(false);
     setViewedSlides(new Set([0]));
     setActiveSavedReportId(item.id);
@@ -1027,6 +1032,7 @@ export default function Home() {
           setSlideIndex(0);
           setWinnerRevealed(false);
           setPodiumRevealed(false);
+          setWinnerSettled(false);
           setAutoPlay(false);
           setViewedSlides(new Set([0]));
           const namedReport =
@@ -1080,6 +1086,7 @@ export default function Home() {
     setSlideIndex(0);
     setWinnerRevealed(false);
     setPodiumRevealed(false);
+    setWinnerSettled(false);
     setError("");
     replaceChatIdInUrl(null);
   }
@@ -1185,10 +1192,45 @@ export default function Home() {
   );
   const animReactions = useAnimatedCount(totalReactions);
 
+  const advanceToNextSlide = () => {
+    setSlideDirection("right");
+    setSlideIndex((current) =>
+      Math.min(availableSuperlatives.length - 1, current + 1),
+    );
+    setExpandedSuperlative(null);
+    setWinnerRevealed(false);
+    setPodiumRevealed(false);
+    setWinnerSettled(false);
+  };
+
+  const manualStepForward = () => {
+    if (
+      podiumRevealed &&
+      activeSlideIndex >= availableSuperlatives.length - 1
+    ) {
+      return;
+    }
+    if (podiumRevealed) {
+      setSlideDirection("right");
+      setSlideIndex((current) =>
+        Math.min(availableSuperlatives.length - 1, current + 1),
+      );
+      setExpandedSuperlative(null);
+      setWinnerRevealed(false);
+      setPodiumRevealed(false);
+      setWinnerSettled(false);
+    } else if (winnerRevealed) {
+      setPodiumRevealed(true);
+    } else {
+      setWinnerRevealed(true);
+    }
+  };
+
   useEffect(() => {
     if (!activeSlide) return;
     setWinnerRevealed(false);
     setPodiumRevealed(false);
+    setWinnerSettled(false);
   }, [report, activeSlide?.[0]]);
 
   useEffect(() => {
@@ -1197,11 +1239,15 @@ export default function Home() {
       REVEAL = 3000,
       PODIUM = 6000;
     const advance = () => {
-      setSlideDirection("right");
       setExpandedSuperlative(null);
-      setSlideIndex((current) =>
-        current >= availableSuperlatives.length - 1 ? 0 : current + 1,
-      );
+      setSlideIndex((current) => {
+        if (current >= availableSuperlatives.length - 1) {
+          setAutoPlay(false);
+          return current;
+        }
+        setSlideDirection("right");
+        return current + 1;
+      });
     };
     const timers: number[] = [];
     if (!winnerRevealed) {
@@ -1229,6 +1275,51 @@ export default function Home() {
   useEffect(() => {
     setViewedSlides((prev) => new Set(prev).add(activeSlideIndex));
   }, [activeSlideIndex]);
+
+  useEffect(() => {
+    if (!podiumRevealed) return;
+    const name = winnerNameRef.current;
+    const finalName = podiumFinalNameRef.current;
+    if (!name || !finalName) return;
+    const raf = requestAnimationFrame(() => {
+      const from = name.getBoundingClientRect();
+      const to = finalName.getBoundingClientRect();
+      const FINAL_FONT = 20;
+      const curFont =
+        parseFloat(window.getComputedStyle(name).fontSize) || FINAL_FONT;
+      const scale = FINAL_FONT / curFont;
+      const dx = to.left - from.left;
+      const dy = to.top - from.top;
+      name.style.transformOrigin = "left top";
+      name.style.transform =
+        `translate(${dx}px, ${dy}px) scale(${scale})`;
+    });
+    const settle = window.setTimeout(() => {
+      setWinnerSettled(true);
+    }, 1100);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(settle);
+    };
+  }, [podiumRevealed]);
+
+  useEffect(() => {
+    if (!(activeSlide && activeWinner)) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.code !== "Space") return;
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        !!target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (isTyping) return;
+      event.preventDefault();
+      manualStepForward();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeSlide, activeWinner]);
 
   return (
     <div className="app-layout">
@@ -1887,6 +1978,17 @@ export default function Home() {
                 <div className="deck-stage">
                   <div
                     className={`superlative-deck${podiumRevealed ? " podium-deck" : ""}`}
+                    onClick={(event) => {
+                      const target = event.target as HTMLElement | null;
+                      if (
+                        target?.closest(
+                          ".deck-arrow, .deck-dot, .expand-button, .winner-suspense, .winner-spotlight",
+                        )
+                      ) {
+                        return;
+                      }
+                      manualStepForward();
+                    }}
                   >
                     <div
                       key={`${activeSlide[0]}-${activeSlideIndex}`}
@@ -1917,7 +2019,6 @@ export default function Home() {
                           aria-label="Previous superlative"
                           disabled={activeSlideIndex === 0}
                           onClick={() => {
-                            setAutoPlay(false);
                             setSlideDirection("left");
                             setSlideIndex((current) =>
                               Math.max(0, current - 1),
@@ -1925,6 +2026,7 @@ export default function Home() {
                             setExpandedSuperlative(null);
                             setWinnerRevealed(false);
                             setPodiumRevealed(false);
+                            setWinnerSettled(false);
                           }}
                         >
                           <svg
@@ -1948,19 +2050,7 @@ export default function Home() {
                             activeSlideIndex ===
                             availableSuperlatives.length - 1
                           }
-                          onClick={() => {
-                            setAutoPlay(false);
-                            setSlideDirection("right");
-                            setSlideIndex((current) =>
-                              Math.min(
-                                availableSuperlatives.length - 1,
-                                current + 1,
-                              ),
-                            );
-                            setExpandedSuperlative(null);
-                            setWinnerRevealed(false);
-                            setPodiumRevealed(false);
-                          }}
+                          onClick={advanceToNextSlide}
                         >
                           <svg
                             width="16"
@@ -1978,12 +2068,8 @@ export default function Home() {
                         {!winnerRevealed && (
                           <div
                             className="winner-suspense"
-                            onClick={() => {
-                              if (!autoPlay) setWinnerRevealed(true);
-                            }}
-                            style={
-                              !autoPlay ? { cursor: "pointer" } : undefined
-                            }
+                            onClick={() => setWinnerRevealed(true)}
+                            style={{ cursor: "pointer" }}
                           >
                             <div className="winner-skeleton">
                               <div className="skeleton-bar skeleton-bar-lg" />
@@ -1991,9 +2077,7 @@ export default function Home() {
                               <div className="skeleton-bar skeleton-bar-md" />
                             </div>
                             <p className="winner-tease">
-                              {autoPlay
-                                ? "Revealing the winner…"
-                                : "Tap to reveal the winner"}
+                              Tap to reveal the winner
                             </p>
                           </div>
                         )}
@@ -2001,17 +2085,19 @@ export default function Home() {
                           <div
                             className="winner-spotlight"
                             onClick={() => {
-                              if (!autoPlay && !podiumRevealed)
-                                setPodiumRevealed(true);
+                              if (!podiumRevealed) setPodiumRevealed(true);
                             }}
                             style={
-                              !autoPlay && !podiumRevealed
+                              !podiumRevealed
                                 ? { cursor: "pointer" }
                                 : undefined
                             }
                           >
                             <span className="winner-label">1ST PLACE</span>
-                            <h2 className="winner-name">
+                            <h2
+                              ref={winnerNameRef}
+                              className={`winner-name${podiumRevealed ? " landing" : ""}${winnerSettled ? " settled" : ""}`}
+                            >
                               {activeWinner.participant}
                             </h2>
                           </div>
@@ -2049,11 +2135,17 @@ export default function Home() {
                                 <div className="podium-bar-unit">
                                   <span className="podium-bar-name podium-name-gold">
                                     <img
+                                      ref={podiumCrownRef}
                                       src="/crown-gold.svg"
                                       alt=""
                                       className="podium-crown"
-                                    />{" "}
-                                    {activeWinner.participant}
+                                    />
+                                    <span
+                                      ref={podiumFinalNameRef}
+                                      className={`podium-final-name${winnerSettled ? " visible" : ""}`}
+                                    >
+                                      {activeWinner.participant}
+                                    </span>
                                   </span>
                                   <div className="podium-bar podium-gold">
                                     <div className="podium-placement-circle podium-circle-gold">
@@ -2179,7 +2271,6 @@ export default function Home() {
                             key === activeSlide[0] ? "step" : undefined
                           }
                           onClick={() => {
-                            setAutoPlay(false);
                             const targetIndex = availableSuperlatives.findIndex(
                               ([slideKey]) => slideKey === key,
                             );
@@ -2190,6 +2281,7 @@ export default function Home() {
                             setExpandedSuperlative(null);
                             setWinnerRevealed(false);
                             setPodiumRevealed(false);
+                            setWinnerSettled(false);
                           }}
                         />
                       ))}
