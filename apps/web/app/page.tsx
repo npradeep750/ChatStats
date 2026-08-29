@@ -559,6 +559,7 @@ export default function Home() {
     typeof window === "undefined" ? false : !isSupabaseConfigured(),
   );
   const lastOpenedChatRef = useRef<string | null>(null);
+  const contentRef = useRef<HTMLElement | null>(null);
   const winnerNameRef = useRef<HTMLHeadingElement>(null);
   const podiumCrownRef = useRef<HTMLImageElement>(null);
   const podiumFinalNameRef = useRef<HTMLSpanElement>(null);
@@ -766,6 +767,10 @@ export default function Home() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [savedReports]);
+
+  useEffect(() => {
+    contentRef.current?.scrollTo(0, 0);
+  }, [homeView, activeSavedReportId]);
 
   useEffect(() => {
     if (!settingsOpen && !profileOpen && !searchOpen) return;
@@ -1405,7 +1410,7 @@ export default function Home() {
           {user ? (
             <div className="account-wrapper">
               <button
-                className="user-line"
+                className={`user-line${accountMenuOpen ? " open" : ""}`}
                 onClick={() => setAccountMenuOpen(!accountMenuOpen)}
               >
                 <span className="avatar">
@@ -1575,7 +1580,7 @@ export default function Home() {
             : "Saved in this browser. Sign in to keep history across devices."}
         </p>
       </aside>
-      <main className="content">
+      <main className="content" ref={contentRef}>
         {loadingReport && (
           <section className="panel deck-loading">
             <p className="eyebrow">CHAT STATS</p>
