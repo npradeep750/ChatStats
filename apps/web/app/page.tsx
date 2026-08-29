@@ -103,6 +103,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const LOCAL_KEY = "chat-analytics-saved-reports";
 const USERNAME_LOCAL_KEY = "chat-stats-username";
 const AVATAR_LOCAL_KEY = "chat-stats-avatar";
+const DECK_STATE_KEY = "chat-stats-deck-state";
 const TIMEZONE_OPTIONS = [
   { value: "UTC", label: "UTC" },
   { value: "America/Los_Angeles", label: "Pacific Time — Los Angeles" },
@@ -561,6 +562,8 @@ export default function Home() {
   const winnerNameRef = useRef<HTMLHeadingElement>(null);
   const podiumCrownRef = useRef<HTMLImageElement>(null);
   const podiumFinalNameRef = useRef<HTMLSpanElement>(null);
+  const lastSlideKeyRef = useRef<string | null>(null);
+  const deckRestoreDoneRef = useRef(false);
   const [winnerSettled, setWinnerSettled] = useState(false);
   const [activeSavedReportId, setActiveSavedReportId] = useState<string | null>(
     null,
@@ -592,6 +595,7 @@ export default function Home() {
   const [autoPlay, setAutoPlay] = useState(false);
   const [viewedSlides, setViewedSlides] = useState<Set<number>>(new Set([0]));
   const [podiumRevealed, setPodiumRevealed] = useState(false);
+  const [visibilityTick, setVisibilityTick] = useState(0);
   const [user, setUser] = useState<User | null>(null);
   const [typedText, setTypedText] = useState("");
   const [error, setError] = useState("");
@@ -714,13 +718,15 @@ export default function Home() {
     lastOpenedChatRef.current = id;
     setReport(item.report);
     if (!sameChat) setParticipantNames(storedParticipantNames(item.report));
-    setExpandedSuperlative(null);
-    setSlideIndex(0);
-    setWinnerRevealed(false);
-    setPodiumRevealed(false);
-    setWinnerSettled(false);
-    setAutoPlay(false);
-    setViewedSlides(new Set([0]));
+    if (!sameChat) {
+      setExpandedSuperlative(null);
+      setSlideIndex(0);
+      setWinnerRevealed(false);
+      setPodiumRevealed(false);
+      setWinnerSettled(false);
+      setAutoPlay(false);
+      setViewedSlides(new Set([0]));
+    }
     setActiveSavedReportId(item.id);
     setHomeView(false);
   }
@@ -1228,10 +1234,67 @@ export default function Home() {
 
   useEffect(() => {
     if (!activeSlide) return;
+    const key: string = activeSlide[0];
+    if (lastSlideKeyRef.current === key) return;
+    lastSlideKeyRef.current = key;
     setWinnerRevealed(false);
     setPodiumRevealed(false);
     setWinnerSettled(false);
-  }, [report, activeSlide?.[0]]);
+  }, [activeSlide]);
+
+  useEffect(() => {
+    if (!availableSuperlatives.length) return;
+    if (deckRestoreDoneRef.current) return;
+    deckRestoreDoneRef.current = true;
+    let saved: {
+      chatId: string | null;
+      slideIndex: number;
+      winnerRevealed: boolean;
+      podiumRevealed: boolean;
+      winnerSettled: boolean;
+    } | null = null;
+    try {
+      saved = JSON.parse(window.sessionStorage.getItem(DECK_STATE_KEY) ?? "null");
+    } catch {
+      saved = null;
+    }
+    if (!saved) return;
+    if (saved.chatId !== activeSavedReportId) return;
+    const idx = Math.min(
+      Math.max(0, saved.slideIndex ?? 0),
+      availableSuperlatives.length - 1,
+    );
+    lastSlideKeyRef.current = availableSuperlatives[idx][0];
+    setSlideIndex(idx);
+    setWinnerRevealed(saved.winnerRevealed);
+    setPodiumRevealed(saved.podiumRevealed);
+    setWinnerSettled(saved.winnerSettled);
+    setViewedSlides((prev) => new Set(prev).add(idx));
+  }, [availableSuperlatives.length, activeSavedReportId]);
+
+  useEffect(() => {
+    if (!deckRestoreDoneRef.current) return;
+    try {
+      window.sessionStorage.setItem(
+        DECK_STATE_KEY,
+        JSON.stringify({
+          chatId: activeSavedReportId,
+          slideIndex,
+          winnerRevealed,
+          podiumRevealed,
+          winnerSettled,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [
+    slideIndex,
+    winnerRevealed,
+    podiumRevealed,
+    winnerSettled,
+    activeSavedReportId,
+  ]);
 
   useEffect(() => {
     if (!activeSlide || !autoPlay) return;
@@ -1270,7 +1333,18 @@ export default function Home() {
     winnerRevealed,
     podiumRevealed,
     availableSuperlatives.length,
+    visibilityTick,
   ]);
+
+  useEffect(() => {
+    function onVisibility() {
+      if (document.hidden) return;
+      setVisibilityTick((t) => t + 1);
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   useEffect(() => {
     setViewedSlides((prev) => new Set(prev).add(activeSlideIndex));
