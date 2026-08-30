@@ -1,132 +1,113 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import {
-  createClient,
-  getProfileFromSupabase,
-  isSupabaseConfigured,
-  removeAvatarFromSupabase,
-  saveProfileToSupabase,
-  uploadAvatarToSupabase,
-} from "../lib/supabase/client";
+  MotionValue,
+  animate,
+  motion,
+  useInView,
+  useMotionValueEvent,
+  useScroll,
+  useSpring,
+  useTransform,
+} from "framer-motion";
+import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
 
-type Ranking = {
-  participant: string;
-  participant_id?: string;
-  score?: number;
-  ranking_score?: number;
-  average_message_impact?: number;
-  average_reactions?: number;
-  total_reactions?: number;
-  reacted_messages?: number;
-  reaction_types?: Record<string, number>;
-  reaction_rate?: number;
-  reply_rate?: number;
-  eligible_messages?: number;
-  confidence?: string;
-  rate?: number;
-  max_run?: number;
-  average_words?: number;
-  longest_message?: string | null;
-  longest_message_words?: number;
-  per_100_messages?: number;
-  total_emojis?: number;
-  total_media_items?: number;
-  starts_per_100_messages?: number;
-  message_count?: number;
-  median_reply_seconds?: number | null;
-  reply_count?: number;
-  long_gap_starts?: number;
-  share?: number;
-  messages?: number;
-  top_emojis?: unknown[];
-  media?: Record<string, number>;
-  message_share?: number;
-  active_days?: number;
-  late_reply_count?: number;
-  average_late_hours?: number;
-  longest_late_hours?: number;
-  intervening_messages?: number;
-  explicit_late_replies?: number;
-  grammar_score?: number;
-  proper_punctuation_rate?: number;
-  capitalization_rate?: number;
-  formal_marker_rate?: number;
-  grammar_messages?: number;
-  minimum_sample?: number;
-  silence_gaps?: number;
-  silence_trigger_rate?: number;
-  total_silence_hours?: number;
-  longest_silence_hours?: number;
-  spread?: number;
-  total_uses?: number;
-  unique_words?: number;
-  total_words?: number;
-  first_use_terms?: number;
-  mention_count?: number;
-  total_mentions?: number;
-  unmapped_mentions?: number;
-};
-type ReportParticipant = { participant_id: string; display_name: string };
-type Report = {
-  report_metadata: { source_format: string; timezone: string };
-  conversation_summary: {
-    title: string;
-    message_count: number;
-    participant_count: number;
-  };
-  participants?: ReportParticipant[];
-  titles: Record<string, Ranking | null>;
-  leaderboards?: Record<string, unknown>;
-  warnings: string[];
-};
-type SavedReport = {
-  id: string;
-  title: string;
-  source_format: string;
-  message_count: number;
-  participant_count: number;
-  created_at: string;
-  report: Report;
-};
-type ConversationOption = {
-  conversation_id: string;
-  title: string;
-  is_named?: boolean;
-  participant_names?: string[];
-  message_count: number;
-  participant_count: number;
+const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 26 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.7, ease: EASE },
+  },
 };
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-const LOCAL_KEY = "chat-analytics-saved-reports";
-const USERNAME_LOCAL_KEY = "chat-stats-username";
-const AVATAR_LOCAL_KEY = "chat-stats-avatar";
-const DECK_STATE_KEY = "chat-stats-deck-state";
-const TIMEZONE_OPTIONS = [
-  { value: "UTC", label: "UTC" },
-  { value: "America/Los_Angeles", label: "Pacific Time — Los Angeles" },
-  { value: "America/Denver", label: "Mountain Time — Denver" },
-  { value: "America/Chicago", label: "Central Time — Chicago" },
-  { value: "America/New_York", label: "Eastern Time — New York" },
-  { value: "America/Sao_Paulo", label: "Brasilia Time — São Paulo" },
-  { value: "Europe/London", label: "United Kingdom — London" },
-  { value: "Europe/Paris", label: "Central European Time — Paris" },
-  { value: "Asia/Dubai", label: "Gulf Time — Dubai" },
-  { value: "Asia/Kolkata", label: "India Standard Time — Kolkata" },
-  { value: "Asia/Singapore", label: "Singapore Time" },
-  { value: "Asia/Tokyo", label: "Japan Standard Time — Tokyo" },
-  { value: "Australia/Sydney", label: "Australian Eastern Time — Sydney" },
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.12, delayChildren: 0.1 } },
+};
+
+const steps = [
+  {
+    num: "01",
+    title: "Upload your chat",
+    body: "Export your iMessage group chat as a database or JSON file and drop it in. Everything happens in your browser.",
+  },
+  {
+    num: "02",
+    title: "We analyze everything",
+    body: "Our pipeline parses every message and computes reply times, reactions, message content, etc.",
+  },
+  {
+    num: "03",
+    title: "Crown your superlatives",
+    body: "Flip through an animated deck that reveals the Main Character, Night Owl, Emoji Addict, etc.",
+  },
 ];
 
-function unavailableUploadFormat(file: File | null) {
-  if (!file) return null;
-  if (/\.json$/i.test(file.name)) return "Instagram JSON";
-  if (/\.csv$/i.test(file.name)) return "CSV";
-  return null;
-}
-const titleLabels: Record<string, string> = {
+const features = [
+  {
+    icon: "crown",
+    title: "Unexpected superlatives",
+    body: "Who's really the group's main character? We measure reactions, not noise, to hand out titles worth arguing about.",
+    from: "#f6c56a",
+    to: "#c9822e",
+  },
+  {
+    icon: "bolt",
+    title: "Replies & reaction timing",
+    body: "Median reply times, quick-draw responders, how long the group takes to go quiet, and who breaks the silence.",
+    from: "#8fd3f7",
+    to: "#3b82c4",
+  },
+  {
+    icon: "moon",
+    title: "Activity patterns",
+    body: "Night owls, early birds, and conversation starters. See who's texting at 3 a.m. and who starts every thread.",
+    from: "#b7a6f5",
+    to: "#6d5ad6",
+  },
+  {
+    icon: "pen",
+    title: "Language & vocabulary",
+    body: "Longest messages, largest unique vocabularies, and the wordsmiths whose phrases the whole group picks up.",
+    from: "#ffd0e6",
+    to: "#e2709f",
+  },
+  {
+    icon: "shield",
+    title: "Grammar & style",
+    body: "Grammar police and punctuation perfectionists identified automatically, right down to the sentence level.",
+    from: "#9fe8c8",
+    to: "#3aa97c",
+  },
+  {
+    icon: "film",
+    title: "Cinematic reveals",
+    body: "Superlatives come alive in an animated, tab-friendly deck with dramatic reveals and a final podium.",
+    from: "#8fd3f7",
+    to: "#155a8e",
+  },
+];
+
+const marqueeItems = [
+  { label: "Main Character", emoji: "👑" },
+  { label: "Night Owl", emoji: "🌙" },
+  { label: "Emoji Addict", emoji: "😂" },
+  { label: "Wordsmith", emoji: "✍️" },
+  { label: "Quick Draw", emoji: "⚡" },
+  { label: "Ghost", emoji: "👻" },
+  { label: "Novelist", emoji: "📚" },
+  { label: "Trendsetter", emoji: "💅" },
+  { label: "Time Traveler", emoji: "⏳" },
+  { label: "Conversation Starter", emoji: "💬" },
+];
+
+const demoTitleLabels: Record<string, string> = {
   main_character: "The Main Character",
   novelist: "The Novelist",
   double_texter: "The Double Texter",
@@ -143,197 +124,7 @@ const titleLabels: Record<string, string> = {
   trendsetter: "The Trendsetter",
 };
 
-function readLocalReports(): SavedReport[] {
-  try {
-    return JSON.parse(
-      window.localStorage.getItem(LOCAL_KEY) ?? "[]",
-    ) as SavedReport[];
-  } catch {
-    return [];
-  }
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function readChatIdFromUrl(): string | null {
-  if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get("chat");
-}
-
-function chatUrl(id: string | null) {
-  const url = new URL(window.location.href);
-  if (id) url.searchParams.set("chat", id);
-  else url.searchParams.delete("chat");
-  return url.toString();
-}
-
-function pushChatIdInUrl(id: string | null) {
-  if (typeof window === "undefined") return;
-  window.history.pushState(null, "", chatUrl(id));
-}
-
-function replaceChatIdInUrl(id: string | null) {
-  if (typeof window === "undefined") return;
-  window.history.replaceState(null, "", chatUrl(id));
-}
-
-function looksLikeIdentifier(value: string) {
-  const trimmed = value.trim();
-  return (
-    /^\+?[\d\s().-]{7,}$/.test(trimmed) ||
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
-  );
-}
-
-function storedParticipantNames(nextReport: Report) {
-  return Object.fromEntries(
-    (nextReport.participants ?? [])
-      .filter(
-        (person) =>
-          person.display_name.trim() &&
-          person.display_name !== "Me" &&
-          !looksLikeIdentifier(person.display_name),
-      )
-      .map((person) => [person.participant_id, person.display_name]),
-  );
-}
-
-function withParticipantNames(
-  nextReport: Report,
-  names: Record<string, string>,
-): Report {
-  function rename(value: unknown): unknown {
-    if (Array.isArray(value)) return value.map(rename);
-    if (!value || typeof value !== "object") return value;
-    const source = value as Record<string, unknown>;
-    const result = Object.fromEntries(
-      Object.entries(source).map(([key, child]) => [key, rename(child)]),
-    );
-    const participantId =
-      typeof source.participant_id === "string" ? source.participant_id : "";
-    const replacement = participantId ? names[participantId]?.trim() : "";
-    if (replacement && "participant" in source)
-      result.participant = replacement;
-    if (participantId && "display_name" in source && replacement)
-      result.display_name = replacement;
-    return result;
-  }
-  return rename(nextReport) as Report;
-}
-
-function compactReportForSave(nextReport: Report): Report {
-  const leaderboards = nextReport.leaderboards ?? {};
-  const mainCharacter = leaderboards.main_character;
-  const compactMainCharacter =
-    mainCharacter &&
-    typeof mainCharacter === "object" &&
-    !Array.isArray(mainCharacter)
-      ? Object.fromEntries(
-          Object.entries(mainCharacter as Record<string, unknown>).filter(
-            ([key]) => key !== "message_evidence",
-          ),
-        )
-      : mainCharacter;
-  return {
-    ...nextReport,
-    leaderboards: { ...leaderboards, main_character: compactMainCharacter },
-  };
-}
-
-function normalizePhoneNumber(value: string): string {
-  return value.replace(/[^\d]/g, "");
-}
-
-function stripInvisibles(value: string): string {
-  return value.replace(
-    /[\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g,
-    "",
-  );
-}
-
-function phoneVariants(value: string): string[] {
-  const digits = normalizePhoneNumber(value);
-  const variants = [digits];
-  if (digits.length === 11 && digits.startsWith("1"))
-    variants.push(digits.slice(1));
-  else if (digits.length === 10) variants.push("1" + digits);
-  return variants;
-}
-
-function contactKey(value: string): string {
-  const trimmed = value.trim().toLowerCase();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
-    ? trimmed
-    : normalizePhoneNumber(value);
-}
-
-function parseVcf(text: string): Map<string, string> {
-  const unfolded = text.replace(/\r\n?/g, "\n").replace(/\n[ \t]/g, "");
-  const map = new Map<string, string>();
-  const cards = unfolded.split(/^BEGIN:VCARD\s*$/im).slice(1);
-  for (const rawCard of cards) {
-    const card = rawCard.split(/^END:VCARD\s*$/im)[0] ?? "";
-    let fullName = "";
-    const nParts = card.match(/^(?:[A-Za-z0-9-]+\.)?N[^:]*:(.*)$/im)?.[1];
-    if (nParts) {
-      const [family, given, ...rest] = nParts.split(";");
-      fullName = [given, family, ...rest]
-        .map((part) => part?.trim())
-        .filter((part) => part && part !== "")
-        .join(" ")
-        .trim();
-    }
-    const fnValue = card
-      .match(/^(?:[A-Za-z0-9-]+\.)?FN[^:]*:(.*)$/im)?.[1]
-      ?.trim();
-    if (fnValue && fnValue !== " " && fullName.indexOf(fnValue) === -1) {
-      fullName = fnValue;
-    }
-    if (!fullName) continue;
-    const telMatches = card.matchAll(/^(?:[A-Za-z0-9-]+\.)?TEL[^:]*:(.*)$/gim);
-    const emailMatches = card.matchAll(
-      /^(?:[A-Za-z0-9-]+\.)?EMAIL[^:]*:(.*)$/gim,
-    );
-    for (const match of telMatches)
-      for (const variant of phoneVariants(match[1]))
-        putContact(map, variant, fullName);
-    for (const match of emailMatches)
-      putContact(map, contactKey(match[1]), fullName);
-  }
-  return map;
-}
-
-function putContact(map: Map<string, string>, key: string, name: string): void {
-  if (!key) return;
-  if (!map.has(key)) map.set(key, name);
-}
-
-function firstNameOf(name: string): string {
-  const trimmed = name.trim();
-  if (
-    !trimmed ||
-    trimmed === "Me" ||
-    looksLikeIdentifier(trimmed) ||
-    !trimmed.includes(" ")
-  )
-    return trimmed;
-  return trimmed.split(/\s+/)[0];
-}
-
-function meParticipantIdFrom(report: Report): string | null {
-  const me = (report.participants ?? []).find(
-    (person) => person.display_name === "Me",
-  );
-  return me?.participant_id ?? null;
-}
-
-const superlativeDescriptions: Record<string, string> = {
+const demoDescriptions: Record<string, string> = {
   main_character:
     "The participant whose messages get the most reactions across the conversation.",
   double_texter:
@@ -362,114 +153,316 @@ const superlativeDescriptions: Record<string, string> = {
   trendsetter: "The participant who introduces vocabulary that others pick up.",
 };
 
-const leaderboardNames: Record<string, string> = {
-  main_character: "main_character",
+type DemoRow = {
+  participant: string;
+  ranking_score?: number;
+  score?: number;
+  total_reactions?: number;
+  reaction_rate?: number;
+  rate?: number;
+  max_run?: number;
+  average_words?: number;
+  eligible_messages?: number;
+  longest_message_words?: number;
+  long_gap_starts?: number;
+  starts_per_100_messages?: number;
+  share?: number;
+  messages?: number;
+  total_emojis?: number;
+  per_100_messages?: number;
+  total_media_items?: number;
+  median_reply_seconds?: number;
+  reply_count?: number;
+  message_count?: number;
+  message_share?: number;
+  active_days?: number;
+  late_reply_count?: number;
+  average_late_hours?: number;
+  longest_late_hours?: number;
+  grammar_score?: number;
+  proper_punctuation_rate?: number;
+  capitalization_rate?: number;
+  unique_words?: number;
+  total_words?: number;
+  minimum_sample?: number;
+  first_use_terms?: number;
 };
 
-function useAnimatedCount(target: number, duration = 800) {
-  const [display, setDisplay] = useState(0);
-  useEffect(() => {
-    if (target === 0) {
-      setDisplay(0);
-      return;
-    }
-    const start = performance.now();
-    let raf: number;
-    function tick(now: number) {
-      const elapsed = now - start;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(Math.round(eased * target));
-      if (progress < 1) raf = requestAnimationFrame(tick);
-    }
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-  return display;
+const demoSlides: Array<{
+  key: string;
+  winner: DemoRow;
+  second: DemoRow;
+  third: DemoRow;
+}> = [
+  {
+    key: "main_character",
+    winner: {
+      participant: "Riley",
+      ranking_score: 482,
+      score: 482,
+      total_reactions: 2140,
+      reaction_rate: 0.34,
+    },
+    second: {
+      participant: "Sam",
+      ranking_score: 391,
+      score: 391,
+      total_reactions: 1720,
+      reaction_rate: 0.29,
+    },
+    third: {
+      participant: "Jordan",
+      ranking_score: 347,
+      score: 347,
+      total_reactions: 1510,
+      reaction_rate: 0.26,
+    },
+  },
+  {
+    key: "night_owl",
+    winner: { participant: "Jordan", share: 0.38, messages: 512 },
+    second: { participant: "Riley", share: 0.27, messages: 364 },
+    third: { participant: "Casey", share: 0.19, messages: 261 },
+  },
+  {
+    key: "emoji_addict",
+    winner: {
+      participant: "Sam",
+      ranking_score: 614,
+      total_emojis: 1830,
+      per_100_messages: 45,
+    },
+    second: {
+      participant: "Riley",
+      ranking_score: 502,
+      total_emojis: 1470,
+      per_100_messages: 38,
+    },
+    third: {
+      participant: "Jordan",
+      ranking_score: 411,
+      total_emojis: 1190,
+      per_100_messages: 31,
+    },
+  },
+  {
+    key: "wordsmith",
+    winner: {
+      participant: "Casey",
+      unique_words: 1204,
+      total_words: 8900,
+      eligible_messages: 410,
+      minimum_sample: 20,
+    },
+    second: {
+      participant: "Sam",
+      unique_words: 987,
+      total_words: 7230,
+      eligible_messages: 382,
+      minimum_sample: 20,
+    },
+    third: {
+      participant: "Riley",
+      unique_words: 742,
+      total_words: 6140,
+      eligible_messages: 355,
+      minimum_sample: 20,
+    },
+  },
+  {
+    key: "novelist",
+    winner: {
+      participant: "Casey",
+      average_words: 145,
+      eligible_messages: 264,
+      longest_message_words: 89,
+    },
+    second: {
+      participant: "Riley",
+      average_words: 118,
+      eligible_messages: 240,
+      longest_message_words: 72,
+    },
+    third: {
+      participant: "Sam",
+      average_words: 97,
+      eligible_messages: 231,
+      longest_message_words: 64,
+    },
+  },
+  {
+    key: "double_texter",
+    winner: { participant: "Sam", rate: 68, max_run: 9 },
+    second: { participant: "Riley", rate: 54, max_run: 7 },
+    third: { participant: "Alex", rate: 47, max_run: 6 },
+  },
+  {
+    key: "conversation_starter",
+    winner: {
+      participant: "Taylor",
+      ranking_score: 413,
+      long_gap_starts: 58,
+      starts_per_100_messages: 6,
+    },
+    second: {
+      participant: "Riley",
+      ranking_score: 371,
+      long_gap_starts: 51,
+      starts_per_100_messages: 5,
+    },
+    third: {
+      participant: "Jordan",
+      ranking_score: 322,
+      long_gap_starts: 45,
+      starts_per_100_messages: 5,
+    },
+  },
+  {
+    key: "early_bird",
+    winner: { participant: "Casey", share: 0.31, messages: 421 },
+    second: { participant: "Sam", share: 0.24, messages: 328 },
+    third: { participant: "Jordan", share: 0.18, messages: 244 },
+  },
+  {
+    key: "media_spammer",
+    winner: {
+      participant: "Riley",
+      ranking_score: 528,
+      total_media_items: 912,
+      per_100_messages: 21,
+    },
+    second: {
+      participant: "Casey",
+      ranking_score: 466,
+      total_media_items: 803,
+      per_100_messages: 18,
+    },
+    third: {
+      participant: "Taylor",
+      ranking_score: 391,
+      total_media_items: 674,
+      per_100_messages: 15,
+    },
+  },
+  {
+    key: "quick_draw",
+    winner: {
+      participant: "Riley",
+      median_reply_seconds: 12.4,
+      reply_count: 620,
+    },
+    second: {
+      participant: "Sam",
+      median_reply_seconds: 18.7,
+      reply_count: 571,
+    },
+    third: {
+      participant: "Casey",
+      median_reply_seconds: 24.2,
+      reply_count: 489,
+    },
+  },
+  {
+    key: "ghost",
+    winner: {
+      participant: "Alex",
+      message_count: 214,
+      message_share: 0.03,
+      active_days: 41,
+    },
+    second: {
+      participant: "Taylor",
+      message_count: 492,
+      message_share: 0.06,
+      active_days: 87,
+    },
+    third: {
+      participant: "Casey",
+      message_count: 1410,
+      message_share: 0.17,
+      active_days: 152,
+    },
+  },
+  {
+    key: "time_traveler",
+    winner: {
+      participant: "Riley",
+      late_reply_count: 83,
+      average_late_hours: 6.4,
+      longest_late_hours: 47,
+    },
+    second: {
+      participant: "Jordan",
+      late_reply_count: 71,
+      average_late_hours: 6.1,
+      longest_late_hours: 39,
+    },
+    third: {
+      participant: "Sam",
+      late_reply_count: 64,
+      average_late_hours: 5.7,
+      longest_late_hours: 33,
+    },
+  },
+  {
+    key: "grammar_police",
+    winner: {
+      participant: "Casey",
+      grammar_score: 884,
+      proper_punctuation_rate: 92,
+      capitalization_rate: 88,
+    },
+    second: {
+      participant: "Riley",
+      grammar_score: 811,
+      proper_punctuation_rate: 87,
+      capitalization_rate: 84,
+    },
+    third: {
+      participant: "Sam",
+      grammar_score: 763,
+      proper_punctuation_rate: 83,
+      capitalization_rate: 79,
+    },
+  },
+  {
+    key: "trendsetter",
+    winner: { participant: "Sam", first_use_terms: 142 },
+    second: { participant: "Casey", first_use_terms: 117 },
+    third: { participant: "Jordan", first_use_terms: 89 },
+  },
+];
+
+const demoParticipants = 6;
+
+const showcaseSlides = ["main_character", "emoji_addict", "time_traveler"]
+  .map((key) => demoSlides.find((s) => s.key === key))
+  .filter((s): s is (typeof demoSlides)[number] => Boolean(s));
+
+function demoPodiumPrimaryStat(key: string, row: DemoRow): string {
+  if (key === "main_character")
+    return `${row.ranking_score ?? row.score ?? 0} score`;
+  if (key === "double_texter") return `${row.rate ?? 0}% rate`;
+  if (key === "novelist") return `${row.average_words ?? 0} avg words`;
+  if (key === "conversation_starter") return `${row.ranking_score ?? 0} score`;
+  if (key === "night_owl" || key === "early_bird")
+    return `${Math.round((row.share ?? 0) * 100)}% share`;
+  if (key === "emoji_addict") return `${row.ranking_score ?? 0} score`;
+  if (key === "media_spammer") return `${row.ranking_score ?? 0} score`;
+  if (key === "quick_draw")
+    return row.median_reply_seconds != null
+      ? `${row.median_reply_seconds.toFixed(1)}s median`
+      : `${row.reply_count ?? 0} replies`;
+  if (key === "ghost") return `${row.message_count ?? 0} messages`;
+  if (key === "time_traveler")
+    return `${row.late_reply_count ?? 0} late returns`;
+  if (key === "grammar_police") return `${row.grammar_score ?? 0} score`;
+  if (key === "wordsmith") return `${row.unique_words ?? 0} unique words`;
+  if (key === "trendsetter") return `${row.first_use_terms ?? 0} adopted words`;
+  return "";
 }
 
-function leaderboardRows(nextReport: Report, key: string): Ranking[] {
-  const source = nextReport.leaderboards?.[leaderboardNames[key] ?? key];
-  const rawRows =
-    key === "main_character" &&
-    source &&
-    typeof source === "object" &&
-    !Array.isArray(source)
-      ? (source as { rankings?: unknown }).rankings
-      : source;
-  if (!Array.isArray(rawRows)) return [];
-  const rows = rawRows.filter((row): row is Ranking =>
-    Boolean(
-      row &&
-      typeof row === "object" &&
-      typeof (row as Ranking).participant === "string",
-    ),
-  );
-  const sortedRows = rows.sort((left, right) => {
-    if (key === "quick_draw")
-      return (
-        (left.median_reply_seconds ?? Number.POSITIVE_INFINITY) -
-        (right.median_reply_seconds ?? Number.POSITIVE_INFINITY)
-      );
-    if (key === "ghost")
-      return (left.message_count ?? 0) - (right.message_count ?? 0);
-    const field =
-      key === "double_texter"
-        ? "rate"
-        : key === "novelist"
-          ? "average_words"
-          : key === "conversation_starter"
-            ? "ranking_score"
-            : ["night_owl", "early_bird"].includes(key)
-              ? "share"
-              : key === "main_character"
-                ? "ranking_score"
-                : ["emoji_addict", "media_spammer", "time_traveler"].includes(
-                      key,
-                    )
-                  ? "ranking_score"
-                  : key === "grammar_police"
-                    ? "grammar_score"
-                    : key === "wordsmith"
-                      ? "unique_words"
-                      : key === "trendsetter"
-                        ? "first_use_terms"
-                        : "per_100_messages";
-    return (
-      Number((right as Record<string, unknown>)[field] ?? 0) -
-      Number((left as Record<string, unknown>)[field] ?? 0)
-    );
-  });
-  return sortedRows;
-}
-
-function emojiSummary(row: Ranking) {
-  if (!Array.isArray(row.top_emojis) || row.top_emojis.length === 0)
-    return "no emoji breakdown";
-  return row.top_emojis
-    .slice(0, 3)
-    .map((item) => (Array.isArray(item) ? `${item[0]} ×${item[1]}` : ""))
-    .filter(Boolean)
-    .join(" ");
-}
-
-function mediaSummary(row: Ranking) {
-  if (!row.media || Object.keys(row.media).length === 0)
-    return "no media or links";
-  return Object.entries(row.media)
-    .map(([type, count]) => `${count} ${type}`)
-    .join(", ");
-}
-
-function reactionTypeSummary(row: Ranking) {
-  if (!row.reaction_types || Object.keys(row.reaction_types).length === 0)
-    return "no reactions detected";
-  return Object.entries(row.reaction_types)
-    .map(([emoji, count]) => `${emoji} ×${count}`)
-    .join(" ");
-}
-
-function rankingDetail(key: string, row: Ranking) {
+function demoRankingDetail(key: string, row: DemoRow): string {
   if (key === "main_character")
     return `${row.ranking_score ?? row.score ?? 0} main character score · ${row.total_reactions ?? 0} reactions · ${row.reaction_rate ?? 0}% of messages reacted to`;
   if (key === "double_texter")
@@ -506,103 +499,309 @@ function rankingDetail(key: string, row: Ranking) {
     return `${row.unique_words ?? 0} unique words · ${row.total_words ?? 0} words total · ${row.eligible_messages ?? 0} messages (needs ${row.minimum_sample ?? 20})`;
   if (key === "trendsetter")
     return `${row.first_use_terms ?? 0} words they introduced that others adopted`;
-}
-
-function podiumPrimaryStat(key: string, row: Ranking): string {
-  if (key === "main_character")
-    return `${row.ranking_score ?? row.score ?? 0} score`;
-  if (key === "double_texter") return `${row.rate ?? 0}% rate`;
-  if (key === "novelist") return `${row.average_words ?? 0} avg words`;
-  if (key === "conversation_starter") return `${row.ranking_score ?? 0} score`;
-  if (key === "night_owl" || key === "early_bird")
-    return `${Math.round((row.share ?? 0) * 100)}% share`;
-  if (key === "emoji_addict") return `${row.ranking_score ?? 0} score`;
-  if (key === "media_spammer") return `${row.ranking_score ?? 0} score`;
-  if (key === "quick_draw")
-    return row.median_reply_seconds != null
-      ? `${row.median_reply_seconds.toFixed(1)}s median`
-      : `${row.reply_count ?? 0} replies`;
-  if (key === "ghost") return `${row.message_count ?? 0} messages`;
-  if (key === "time_traveler")
-    return `${row.late_reply_count ?? 0} late returns`;
-  if (key === "grammar_police") return `${row.grammar_score ?? 0} score`;
-  if (key === "wordsmith") return `${row.unique_words ?? 0} unique words`;
-  if (key === "trendsetter") return `${row.first_use_terms ?? 0} adopted words`;
   return "";
 }
 
-function podiumPlacement(index: number, total: number): string {
-  const ordinals = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"];
-  return `${ordinals[index] ?? `${index + 1}th`} of ${total}`;
+function demoFullRanking(key: string): DemoRow[] {
+  const slide = demoSlides.find((s) => s.key === key);
+  if (!slide) return [];
+  const topThree = [slide.winner, slide.second, slide.third];
+  const allNames = ["Riley", "Sam", "Jordan", "Casey", "Alex", "Taylor"];
+  const used = new Set(topThree.map((r) => r.participant));
+  const fillerNames = allNames.filter((n) => !used.has(n));
+
+  const factors = [0.72, 0.55, 0.4];
+  const filler: DemoRow[] = fillerNames.map((participant, i) => {
+    const base = slide.third;
+    const f = factors[i] ?? 0.3;
+    const row: DemoRow = { participant };
+    for (const key of Object.keys(base)) {
+      const v = base[key as keyof DemoRow];
+      if (typeof v === "number") {
+        (row as Record<string, string | number | undefined>)[key] = Math.max(
+          1,
+          Math.round(v * f),
+        );
+      }
+    }
+    return row;
+  });
+  return [...topThree, ...filler];
 }
 
-export default function Home() {
-  const [file, setFile] = useState<File | null>(null);
-  const [contactsFile, setContactsFile] = useState<File | null>(null);
-  const [contactsMap, setContactsMap] = useState<Map<string, string>>(
-    new Map(),
-  );
-  const [unmatchedCount, setUnmatchedCount] = useState(0);
-  const [timezone, setTimezone] = useState("UTC");
-  const [report, setReport] = useState<Report | null>(null);
-  const [conversationChoices, setConversationChoices] = useState<
-    ConversationOption[]
-  >([]);
-  const [selectedConversationId, setSelectedConversationId] = useState("");
-  const [conversationSearch, setConversationSearch] = useState("");
-  const [conversationSearchActive, setConversationSearchActive] =
-    useState(false);
-  const [savedReports, setSavedReports] = useState<SavedReport[]>(() =>
-    typeof window === "undefined" ? [] : readLocalReports(),
-  );
-  const [reportsLoaded, setReportsLoaded] = useState(
-    typeof window === "undefined" ? false : !isSupabaseConfigured(),
-  );
-  const lastOpenedChatRef = useRef<string | null>(null);
-  const contentRef = useRef<HTMLElement | null>(null);
-  const winnerNameRef = useRef<HTMLHeadingElement>(null);
-  const podiumCrownRef = useRef<HTMLImageElement>(null);
-  const podiumFinalNameRef = useRef<HTMLSpanElement>(null);
-  const lastSlideKeyRef = useRef<string | null>(null);
-  const deckRestoreDoneRef = useRef(false);
-  const [winnerSettled, setWinnerSettled] = useState(false);
-  const [activeSavedReportId, setActiveSavedReportId] = useState<string | null>(
-    null,
-  );
-  const [homeView, setHomeView] = useState(true);
-  const [hasUrlChat, setHasUrlChat] = useState(false);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [participantNames, setParticipantNames] = useState<
-    Record<string, string>
-  >({});
-  const [username, setUsername] = useState<string>("");
-  const [usernameDraft, setUsernameDraft] = useState<string>("");
-  const [avatarUrl, setAvatarUrl] = useState<string>("");
-  const [avatarDraft, setAvatarDraft] = useState<File | null>(null);
-  const [removeAvatarFlag, setRemoveAvatarFlag] = useState(false);
-  const [expandedSuperlative, setExpandedSuperlative] = useState<string | null>(
-    null,
-  );
-  const [slideIndex, setSlideIndex] = useState(0);
-  const [winnerRevealed, setWinnerRevealed] = useState(false);
-  const [slideDirection, setSlideDirection] = useState<"left" | "right">(
-    "right",
-  );
+const stats = [
+  { value: 14, decimals: 0, suffix: "", label: "Superlative titles" },
+  { value: 100, decimals: 0, suffix: "%", label: "Analysis runs locally" },
+  { value: 3, decimals: 0, suffix: "", label: "Chat formats supported" },
+  { value: 600, decimals: 0, suffix: "+", label: "IANA timezones" },
+];
 
-  const [autoPlay, setAutoPlay] = useState(false);
-  const [viewedSlides, setViewedSlides] = useState<Set<number>>(new Set([0]));
-  const [podiumRevealed, setPodiumRevealed] = useState(false);
-  const [visibilityTick, setVisibilityTick] = useState(0);
-  const [user, setUser] = useState<User | null>(null);
+const navLinks = [
+  { label: "How it works", href: "#how-it-works" },
+  { label: "Features", href: "#features" },
+];
+
+function FeatureIcon({ name }: { name: string }) {
+  const common = {
+    width: 20,
+    height: 20,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (name) {
+    case "crown":
+      return (
+        <svg {...common}>
+          <path d="M3 17l2-9 5 3.5L12 5l2 6.5L19 8l2 9z" />
+          <path d="M3 20h18" />
+        </svg>
+      );
+    case "bolt":
+      return (
+        <svg {...common}>
+          <polygon points="13 2 4 14 11 14 10 22 20 10 12 10 13 2" />
+        </svg>
+      );
+    case "moon":
+      return (
+        <svg {...common}>
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+        </svg>
+      );
+    case "pen":
+      return (
+        <svg {...common}>
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg {...common}>
+          <path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z" />
+          <path d="m9 12 2 2 4-4.5" />
+        </svg>
+      );
+    case "film":
+      return (
+        <svg {...common}>
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="M7 5v14M17 5v14M3 10h4M3 15h4M17 10h4M17 15h4" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+function MagneticButton({
+  children,
+  href,
+  className,
+  onClick,
+  target,
+  rel,
+}: {
+  children: React.ReactNode;
+  href: string;
+  className: string;
+  onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void;
+  target?: string;
+  rel?: string;
+}) {
+  const ref = useRef<HTMLAnchorElement>(null);
+  const x = useSpring(0, { stiffness: 260, damping: 18 });
+  const y = useSpring(0, { stiffness: 260, damping: 18 });
+
+  function onMove(event: React.MouseEvent) {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    x.set((event.clientX - (rect.left + rect.width / 2)) * 0.28);
+    y.set((event.clientY - (rect.top + rect.height / 2)) * 0.28);
+  }
+
+  function onLeave() {
+    x.set(0);
+    y.set(0);
+  }
+
+  const resolvedRel =
+    rel ?? (target === "_blank" ? "noopener noreferrer" : undefined);
+
+  return (
+    <motion.a
+      ref={ref}
+      href={href}
+      target={target}
+      rel={resolvedRel}
+      onClick={onClick}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      style={{ x, y }}
+      whileTap={{ scale: 0.96 }}
+      className={className}
+    >
+      {children}
+    </motion.a>
+  );
+}
+
+function Counter({
+  value,
+  decimals,
+  suffix,
+}: {
+  value: number;
+  decimals: number;
+  suffix: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, amount: 0.6 });
+  const [display, setDisplay] = useState(0);
+
+  useEffect(() => {
+    if (!inView) return;
+    const controls = animate(0, value, {
+      duration: 1.8,
+      ease: EASE,
+      onUpdate: (v) => setDisplay(v),
+    });
+    return () => controls.stop();
+  }, [inView, value]);
+
+  const formatted =
+    decimals > 0
+      ? display.toFixed(decimals)
+      : Math.round(display).toLocaleString("en-US");
+
+  return (
+    <div ref={ref} className="landing-stat-value">
+      {formatted}
+      {suffix}
+    </div>
+  );
+}
+
+function useContainerScroll() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ container: scrollRef });
+  const progress = useSpring(scrollYProgress, { stiffness: 120, damping: 24 });
+  return { scrollRef, progress };
+}
+
+function ScrollProgress({ progress }: { progress: MotionValue<number> }) {
+  return (
+    <motion.div
+      className="landing-progress"
+      style={{ scaleX: progress }}
+      aria-hidden="true"
+    />
+  );
+}
+
+function Nav({
+  progress,
+  auth,
+}: {
+  progress: MotionValue<number>;
+  auth: LandingAuth;
+}) {
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  useMotionValueEvent(progress, "change", (v) => {
+    setScrolled(v > 0.02);
+  });
+
+  return (
+    <header className={`landing-nav${scrolled ? " scrolled" : ""}`}>
+      <div className="landing-nav-inner">
+        <Link href="/" className="landing-brand" aria-label="Chat Stats home">
+          <span className="landing-brand-mark">✦</span>
+          CHAT STATS
+        </Link>
+        <nav className="landing-nav-links" aria-label="Sections">
+          {navLinks.map((link) => (
+            <a key={link.href} href={link.href} className="landing-nav-link">
+              {link.label}
+            </a>
+          ))}
+        </nav>
+        <div className="landing-nav-actions">
+          {auth.user ? (
+            <div className="landing-account">
+              <button
+                type="button"
+                className={`landing-user-line${menuOpen ? " open" : ""}`}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                <span className="landing-avatar">
+                  {(auth.user.email ?? "?")[0].toUpperCase()}
+                </span>
+                <span
+                  className="landing-user-email"
+                  title={auth.user.email ?? "Signed in"}
+                >
+                  {auth.user.email}
+                </span>
+              </button>
+              {menuOpen && (
+                <div className="landing-account-dropdown">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      auth.signOut();
+                    }}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="landing-btn-login"
+              onClick={auth.signIn}
+              disabled={auth.loading}
+            >
+              {auth.loading ? "…" : "Log in"}
+            </button>
+          )}
+          <Link
+            href="/app"
+            className="landing-nav-cta"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Try Chat Stats
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M5 12h14" />
+              <path d="m13 6 6 6-6 6" />
+            </svg>
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function Hero() {
   const [typedText, setTypedText] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [progressStage, setProgressStage] = useState("");
 
   useEffect(() => {
     const target = "Find out who really runs the group chat.";
@@ -616,744 +815,131 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (!isSupabaseConfigured()) {
-      setSavedReports(readLocalReports());
-      setReportsLoaded(true);
-      return;
-    }
-    const supabase = createClient();
-    let active = true;
-    async function loadReports() {
-      const { data } = await supabase
-        .from("chat_reports")
-        .select(
-          "id,title,source_format,message_count,participant_count,created_at,report",
-        )
-        .order("created_at", { ascending: false });
-      if (active && data) setSavedReports(data as SavedReport[]);
-      if (active) setReportsLoaded(true);
-    }
-    void supabase.auth.getUser().then(({ data }) => {
-      if (!active) return;
-      setUser(data.user);
-      if (data.user) void loadReports();
-      else {
-        setSavedReports(readLocalReports());
-        setReportsLoaded(true);
-      }
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) void loadReports();
-        else {
-          setSavedReports(readLocalReports());
-          setReportsLoaded(true);
-        }
-      },
-    );
-    return () => {
-      active = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
+  return (
+    <section className="landing-hero" aria-label="Intro">
+      <div className="landing-blob landing-blob--1" aria-hidden="true" />
+      <div className="landing-blob landing-blob--2" aria-hidden="true" />
+      <div className="landing-blob landing-blob--3" aria-hidden="true" />
+      <div className="landing-dots" aria-hidden="true" />
 
-  useEffect(() => {
-    let stored = "";
-    let storedAvatar = "";
-    try {
-      stored = window.localStorage.getItem(USERNAME_LOCAL_KEY) ?? "";
-      storedAvatar = window.localStorage.getItem(AVATAR_LOCAL_KEY) ?? "";
-    } catch {
-      stored = "";
-      storedAvatar = "";
-    }
-    if (stored) {
-      setUsername(stored);
-      setUsernameDraft(stored);
-    }
-    if (storedAvatar) setAvatarUrl(storedAvatar);
-  }, []);
+      <motion.div
+        className="landing-hero-inner"
+        initial="hidden"
+        animate="show"
+        variants={stagger}
+      >
+        <motion.p variants={fadeUp} className="landing-eyebrow">
+          <span className="landing-eyebrow-dot" aria-hidden="true" />
+          GROUP CHAT ANALYTICS · iMESSAGE INSIGHTS
+        </motion.p>
+        <motion.h1 variants={fadeUp} className="landing-h1">
+          {typedText}
+          <span className="cursor" aria-hidden="true">
+            |
+          </span>
+        </motion.h1>
+        <motion.p variants={fadeUp} className="landing-sub">
+          Upload an iMessage export and find unexpected superlatives.
+        </motion.p>
+        <motion.div variants={fadeUp} className="landing-hero-actions">
+          <MagneticButton
+            href="/app"
+            className="landing-btn-primary"
+            target="_blank"
+          >
+            <span>Try Chat Stats</span>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M5 12h14" />
+              <path d="m13 6 6 6-6 6" />
+            </svg>
+          </MagneticButton>
+          <a href="#how-it-works" className="landing-btn-ghost">
+            See how it works
+          </a>
+        </motion.div>
+      </motion.div>
 
-  useEffect(() => {
-    if (!user) return;
-    if (!isSupabaseConfigured()) return;
-    let active = true;
-    void getProfileFromSupabase().then((profile) => {
-      if (!active) return;
-      if (profile.username) {
-        setUsername(profile.username);
-        setUsernameDraft(profile.username);
-        try {
-          window.localStorage.setItem(USERNAME_LOCAL_KEY, profile.username);
-        } catch {
-          /* ignore */
-        }
-      }
-      if (profile.avatar_url) {
-        setAvatarUrl(profile.avatar_url);
-        try {
-          window.localStorage.setItem(AVATAR_LOCAL_KEY, profile.avatar_url);
-        } catch {
-          /* ignore */
-        }
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [user]);
+      <motion.div
+        className="landing-scroll-cue"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.8, duration: 0.8 }}
+        aria-hidden="true"
+      >
+        <span className="landing-scroll-mouse">
+          <span className="landing-scroll-wheel" />
+        </span>
+        <span>Scroll</span>
+      </motion.div>
+    </section>
+  );
+}
 
-  function openChatById(id: string | null) {
-    if (!id) {
-      setHomeView(true);
-      setActiveSavedReportId(null);
-      setReport(null);
-      setParticipantNames({});
-      return;
-    }
-    const item = savedReports.find((s) => s.id === id);
-    if (!item) return;
-    const sameChat = lastOpenedChatRef.current === id;
-    lastOpenedChatRef.current = id;
-    setReport(item.report);
-    if (!sameChat) setParticipantNames(storedParticipantNames(item.report));
-    if (!sameChat) {
-      setExpandedSuperlative(null);
-      setSlideIndex(0);
-      setWinnerRevealed(false);
-      setPodiumRevealed(false);
-      setWinnerSettled(false);
-      setAutoPlay(false);
-      setViewedSlides(new Set([0]));
-    }
-    setActiveSavedReportId(item.id);
-    setHomeView(false);
-  }
+function Showcase({
+  containerRef,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    container: containerRef,
+    target: ref,
+    offset: ["start end", "end start"],
+  });
+  const parallaxY = useTransform(scrollYProgress, [0, 1], [60, -60]);
+  const rotateX = useTransform(scrollYProgress, [0, 0.5, 1], [6, 0, -6]);
 
-  useEffect(() => {
-    setHasUrlChat(readChatIdFromUrl() != null);
-  }, []);
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [slideDirection, setSlideDirection] = useState<"left" | "right">(
+    "right",
+  );
+  const [winnerRevealed, setWinnerRevealed] = useState(false);
+  const [podiumRevealed, setPodiumRevealed] = useState(false);
+  const [winnerSettled, setWinnerSettled] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [viewedSlides, setViewedSlides] = useState<Set<number>>(new Set());
 
-  useEffect(() => {
-    const chatId = readChatIdFromUrl();
-    if (!chatId) return;
-    if (!reportsLoaded) return;
-    if (!savedReports.some((s) => s.id === chatId)) {
-      replaceChatIdInUrl(null);
-      openChatById(null);
-      return;
-    }
-    openChatById(chatId);
-  }, [savedReports, reportsLoaded]);
+  const N = showcaseSlides.length;
+  const slide = showcaseSlides[slideIndex];
+  const activeKey = slide.key;
 
-  useEffect(() => {
-    const onPop = () => {
-      const chatId = readChatIdFromUrl();
-      if (!chatId) {
-        setHomeView(true);
-        setActiveSavedReportId(null);
-        setReport(null);
-        setParticipantNames({});
-        return;
-      }
-      if (!savedReports.some((s) => s.id === chatId)) {
-        window.history.back();
-        return;
-      }
-      openChatById(chatId);
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, [savedReports]);
+  const appBoxRef = useRef<HTMLDivElement>(null);
+  const suspenseRef = useRef<HTMLDivElement>(null);
+  const spotlightRef = useRef<HTMLDivElement>(null);
+  const leftArrowRef = useRef<HTMLButtonElement>(null);
+  const rightArrowRef = useRef<HTMLButtonElement>(null);
+  const expandRef = useRef<HTMLButtonElement>(null);
+  const winnerNameRef = useRef<HTMLHeadingElement>(null);
+  const podiumFinalNameRef = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => {
-    contentRef.current?.scrollTo(0, 0);
-  }, [homeView, activeSavedReportId]);
+  const slideIndexRef = useRef(0);
 
-  useEffect(() => {
-    if (!settingsOpen && !profileOpen && !searchOpen) return;
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setSettingsOpen(false);
-        setProfileOpen(false);
-        setSearchOpen(false);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [settingsOpen, profileOpen, searchOpen]);
-
-  async function signInWithGoogle() {
-    if (!isSupabaseConfigured()) {
-      setError(
-        "Add the Supabase environment variables before enabling Google sign-in.",
-      );
-      return;
-    }
-    const { error: authError } = await createClient().auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
-    if (authError) setError(authError.message);
-  }
-
-  async function signOut() {
-    if (!isSupabaseConfigured()) return;
-    await createClient().auth.signOut();
-    setUser(null);
-    setSavedReports(readLocalReports());
-    setReport(null);
-    setActiveSavedReportId(null);
-    setParticipantNames({});
-    replaceChatIdInUrl(null);
-    setHomeView(true);
-  }
-
-  async function handleSaveProfile() {
-    const nextUsername = usernameDraft.trim();
-    setError("");
-    if (!user) {
-      setError("Sign in to save your profile.");
-      return;
-    }
-    let nextAvatarUrl = avatarUrl;
-    try {
-      if (avatarDraft) {
-        if (!avatarDraft.type.startsWith("image/")) {
-          setError("Profile picture must be an image (JPG, PNG, etc.).");
-          return;
-        }
-        if (avatarDraft.size > 5 * 1024 * 1024) {
-          setError("Profile picture must be 5 MB or smaller.");
-          return;
-        }
-        const uploaded = await uploadAvatarToSupabase(avatarDraft);
-        if (!uploaded) {
-          setError("Could not upload your profile picture.");
-          return;
-        }
-        if (avatarUrl) await removeAvatarFromSupabase(avatarUrl);
-        nextAvatarUrl = uploaded;
-        setAvatarDraft(null);
-        setRemoveAvatarFlag(false);
-      } else if (removeAvatarFlag && avatarUrl) {
-        await removeAvatarFromSupabase(avatarUrl);
-        nextAvatarUrl = "";
-        setRemoveAvatarFlag(false);
-      }
-      await saveProfileToSupabase({
-        username: nextUsername,
-        avatar_url: nextAvatarUrl,
-      });
-      setUsername(nextUsername);
-      setAvatarUrl(nextAvatarUrl);
-      try {
-        window.localStorage.setItem(USERNAME_LOCAL_KEY, nextUsername);
-        window.localStorage.setItem(AVATAR_LOCAL_KEY, nextAvatarUrl);
-      } catch {
-        /* ignore */
-      }
-    } catch {
-      setError("Could not save your profile. Please try again.");
-    }
-  }
-
-  function openProfile() {
-    setAccountMenuOpen(false);
-    setUsernameDraft(username);
-    setAvatarDraft(null);
-    setRemoveAvatarFlag(false);
-    setProfileOpen(true);
-  }
-
-  async function saveReport(nextReport: Report) {
-    const persistedReport = compactReportForSave(nextReport);
-    const entry: SavedReport = {
-      id: crypto.randomUUID(),
-      title:
-        persistedReport.conversation_summary.title || "Untitled group chat",
-      source_format: persistedReport.report_metadata.source_format,
-      message_count: persistedReport.conversation_summary.message_count,
-      participant_count: persistedReport.conversation_summary.participant_count,
-      created_at: new Date().toISOString(),
-      report: persistedReport,
-    };
-    if (user && isSupabaseConfigured()) {
-      const { data, error: saveError } = await createClient()
-        .from("chat_reports")
-        .insert({
-          user_id: user.id,
-          title: entry.title,
-          source_format: entry.source_format,
-          message_count: entry.message_count,
-          participant_count: entry.participant_count,
-          report: entry.report,
-        })
-        .select(
-          "id,title,source_format,message_count,participant_count,created_at",
-        )
-        .single();
-      if (saveError) {
-        setError(
-          `Chat analyzed, but it could not be saved: ${saveError.message}`,
-        );
-        return null;
-      }
-      if (data)
-        setSavedReports((current) => [
-          { ...(data as Omit<SavedReport, "report">), report: persistedReport },
-          ...current,
-        ]);
-      return data?.id ?? null;
-    }
-    const next = [entry, ...readLocalReports()].slice(0, 20);
-    window.localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
-    setSavedReports(next);
-    return entry.id;
-  }
-
-  async function updateSavedReport(nextReport: Report) {
-    if (!activeSavedReportId) return;
-    const persistedReport = compactReportForSave(nextReport);
-    const title =
-      persistedReport.conversation_summary.title || "Untitled group chat";
-    if (user && isSupabaseConfigured()) {
-      const { data, error: updateError } = await createClient()
-        .from("chat_reports")
-        .update({ title, report: persistedReport })
-        .eq("id", activeSavedReportId)
-        .select(
-          "id,title,source_format,message_count,participant_count,created_at",
-        )
-        .single();
-      if (updateError) {
-        setError(
-          `Names were applied, but the saved report could not be updated: ${updateError.message}`,
-        );
-        return;
-      }
-      if (data)
-        setSavedReports((current) =>
-          current.map((item) =>
-            item.id === activeSavedReportId
-              ? {
-                  ...(data as Omit<SavedReport, "report">),
-                  report: persistedReport,
-                }
-              : item,
-          ),
-        );
-      return;
-    }
-    const next = savedReports.map((item) =>
-      item.id === activeSavedReportId
-        ? { ...item, title, report: persistedReport }
-        : item,
-    );
-    window.localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
-    setSavedReports(next);
-  }
-
-  async function applyParticipantNames() {
-    if (!report) return;
-    const cleanedNames = Object.fromEntries(
-      Object.entries(participantNames)
-        .map(([id, name]) => [id, name.trim()])
-        .filter(([, name]) => Boolean(name)),
-    );
-    setParticipantNames(cleanedNames);
-    await updateSavedReport(withParticipantNames(report, cleanedNames));
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    const unavailableFormat = unavailableUploadFormat(file);
-    if (!file || unavailableFormat) return;
-    setBusy(true);
-    setError("");
-    setProgress(5);
-    setProgressStage("Uploading file");
-    const form = new FormData();
-    form.append("file", file);
-    form.append("timezone", timezone);
-    try {
-      const isSQLite = /\.(sqlite|sqlite3|db)$/i.test(file.name);
-      if (isSQLite && !selectedConversationId) {
-        setProgress(15);
-        setProgressStage(
-          "Indexing conversations — large files may take a moment",
-        );
-        const previewResponse = await fetch(`${API}/v1/imports/preview`, {
-          method: "POST",
-          body: form,
-        });
-        const previewBody = await previewResponse.json();
-        if (!previewResponse.ok)
-          throw new Error(
-            previewBody.detail ?? "Could not inspect the SQLite file",
-          );
-        const choices = previewBody.conversations as ConversationOption[];
-        setConversationChoices(choices);
-        setConversationSearchActive(false);
-        if (choices.length === 1)
-          setSelectedConversationId(choices[0].conversation_id);
-        return;
-      }
-      if (selectedConversationId)
-        form.append("conversation_id", selectedConversationId);
-      const response = await fetch(`${API}/v1/imports/start`, {
-        method: "POST",
-        body: form,
-      });
-      const job = await response.json();
-      if (!response.ok)
-        throw new Error(job.detail ?? "Could not start analysis");
-      let finished = false;
-      while (!finished) {
-        const jobResponse = await fetch(`${API}/v1/imports/jobs/${job.job_id}`);
-        const current = await jobResponse.json();
-        if (!jobResponse.ok)
-          throw new Error(current.detail ?? "Could not read analysis progress");
-        setProgress(current.progress ?? 0);
-        setProgressStage(current.stage ?? "Analyzing");
-        if (current.status === "failed")
-          throw new Error(current.error ?? "Analysis failed");
-        if (current.status === "complete") {
-          const matchedNames: Record<string, string> = {};
-          let unmatched = 0;
-          if (contactsMap.size > 0) {
-            for (const person of current.report.participants ?? []) {
-              if (person.display_name === "Me") continue;
-              const raw = stripInvisibles(person.display_name);
-              const isIdentifier =
-                looksLikeIdentifier(raw) ||
-                (raw.trim().length > 0 && /\d/.test(raw) && !raw.includes(" "));
-              if (!isIdentifier) continue;
-              const name = contactsMap.get(contactKey(raw));
-              if (name) matchedNames[person.participant_id] = name;
-              else unmatched += 1;
-            }
-          }
-          setUnmatchedCount(unmatched);
-          setReport(current.report);
-          setParticipantNames(matchedNames);
-          setExpandedSuperlative(null);
-          setSlideIndex(0);
-          setWinnerRevealed(false);
-          setPodiumRevealed(false);
-          setWinnerSettled(false);
-          setAutoPlay(false);
-          setViewedSlides(new Set([0]));
-          const namedReport =
-            Object.keys(matchedNames).length > 0
-              ? withParticipantNames(current.report, matchedNames)
-              : current.report;
-          const savedId = await saveReport(namedReport);
-          setActiveSavedReportId(savedId);
-          replaceChatIdInUrl(savedId);
-          setHomeView(false);
-          finished = true;
-        } else await new Promise((resolve) => window.setTimeout(resolve, 450));
-      }
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Could not process file",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeReport(id: string) {
-    if (user && isSupabaseConfigured())
-      await createClient().from("chat_reports").delete().eq("id", id);
-    const next = savedReports.filter((item) => item.id !== id);
-    setSavedReports(next);
-    if (!user) window.localStorage.setItem(LOCAL_KEY, JSON.stringify(next));
-    if (activeSavedReportId === id) {
-      setActiveSavedReportId(null);
-      setReport(null);
-      setParticipantNames({});
-      replaceChatIdInUrl(null);
-      setHomeView(true);
-    }
-  }
-
-  function onFileChange(nextFile: File | null) {
-    setFile(nextFile);
-    setContactsFile(null);
-    setContactsMap(new Map());
-    setUnmatchedCount(0);
-    setConversationChoices([]);
-    setSelectedConversationId("");
-    setConversationSearch("");
-    setConversationSearchActive(false);
-    setReport(null);
-    setActiveSavedReportId(null);
-    setParticipantNames({});
-    setExpandedSuperlative(null);
-    setSlideIndex(0);
+  function goToSlide(index: number, direction: "left" | "right") {
+    const next = (index + N) % N;
+    slideIndexRef.current = next;
+    setSlideIndex(next);
+    setSlideDirection(direction);
     setWinnerRevealed(false);
     setPodiumRevealed(false);
     setWinnerSettled(false);
-    setError("");
-    replaceChatIdInUrl(null);
+    setExpanded(false);
+    setClosing(false);
   }
 
-  async function onContactsFileChange(nextFile: File | null) {
-    setContactsFile(nextFile);
-    setUnmatchedCount(0);
-    if (!nextFile) {
-      setContactsMap(new Map());
-      return;
-    }
-    try {
-      const text = await nextFile.text();
-      const parsed = parseVcf(text);
-      setContactsMap(parsed);
-      setError("");
-    } catch {
-      setContactsMap(new Map());
-      setError("Could not read the contacts file. Choose a .vcf export.");
-    }
-  }
-
-  const analyzedTitles = new Set(
-    savedReports.map((r) => r.title.toLowerCase()),
-  );
-  const visibleChoices = conversationChoices.filter((choice) =>
-    choice.title
-      .toLowerCase()
-      .includes(conversationSearch.toLowerCase().trim()),
-  );
-  const analyzedChoiceIds = new Set(
-    visibleChoices
-      .filter((c) => analyzedTitles.has(c.title.toLowerCase()))
-      .map((c) => c.conversation_id),
-  );
-  const selectedIsAnalyzed =
-    selectedConversationId !== "" &&
-    analyzedChoiceIds.has(selectedConversationId);
-
-  const meId = report ? meParticipantIdFrom(report) : null;
-  const searchQueryLower = searchQuery.trim().toLowerCase();
-  const filteredReports = savedReports.filter((item) =>
-    item.title.toLowerCase().includes(searchQueryLower),
-  );
-  const displayedNames = Object.fromEntries(
-    (report?.participants ?? []).map((person) => {
-      const override = participantNames[person.participant_id]?.trim();
-      const isMe = person.participant_id === meId;
-      const source =
-        override ||
-        (isMe && username.trim() ? username.trim() : "") ||
-        person.display_name ||
-        person.participant_id;
-      return [person.participant_id, firstNameOf(source)];
-    }),
-  );
-
-  const displayedReport = report
-    ? withParticipantNames(report, displayedNames)
-    : null;
-  const loadingReport = hasUrlChat && !reportsLoaded && !report && homeView;
-  const unavailableFormat = unavailableUploadFormat(file);
-  const reportParticipants = report?.participants ?? [];
-  const participantsToName = reportParticipants;
-  const availableSuperlatives = displayedReport
-    ? Object.entries(displayedReport.titles).filter(
-        ([key, winner]) =>
-          winner &&
-          (key !== "media_spammer" || (winner.per_100_messages ?? 0) > 0),
-      )
-    : [];
-  const activeSlideIndex = Math.min(
-    slideIndex,
-    Math.max(0, availableSuperlatives.length - 1),
-  );
-  const activeSlide = availableSuperlatives[activeSlideIndex];
-  const activeWinner = activeSlide?.[1] ?? null;
-  const podiumRows = displayedReport
-    ? leaderboardRows(displayedReport, activeSlide[0])
-    : [];
-  const podium2nd = podiumRows[1] ?? null;
-  const podium3rd = podiumRows[2] ?? null;
-  const mainCharacterLeaderboard =
-    displayedReport?.leaderboards?.main_character;
-  const totalReactions =
-    mainCharacterLeaderboard &&
-    typeof mainCharacterLeaderboard === "object" &&
-    !Array.isArray(mainCharacterLeaderboard) &&
-    typeof (mainCharacterLeaderboard as { total_reactions?: unknown })
-      .total_reactions === "number"
-      ? (mainCharacterLeaderboard as { total_reactions: number })
-          .total_reactions
-      : leaderboardRows(
-          displayedReport ?? ({} as Report),
-          "main_character",
-        ).reduce((total, row) => total + (row.total_reactions ?? 0), 0);
-
-  const animMessages = useAnimatedCount(
-    displayedReport?.conversation_summary.message_count ?? 0,
-  );
-  const animParticipants = useAnimatedCount(
-    displayedReport?.conversation_summary.participant_count ?? 0,
-  );
-  const animReactions = useAnimatedCount(totalReactions);
-
-  const advanceToNextSlide = () => {
-    setSlideDirection("right");
-    setSlideIndex((current) =>
-      Math.min(availableSuperlatives.length - 1, current + 1),
-    );
-    setExpandedSuperlative(null);
-    setWinnerRevealed(false);
-    setPodiumRevealed(false);
-    setWinnerSettled(false);
-  };
-
-  const manualStepForward = () => {
-    if (
-      podiumRevealed &&
-      activeSlideIndex >= availableSuperlatives.length - 1
-    ) {
-      return;
-    }
-    if (podiumRevealed) {
-      setSlideDirection("right");
-      setSlideIndex((current) =>
-        Math.min(availableSuperlatives.length - 1, current + 1),
-      );
-      setExpandedSuperlative(null);
-      setWinnerRevealed(false);
-      setPodiumRevealed(false);
-      setWinnerSettled(false);
-    } else if (winnerRevealed) {
-      setPodiumRevealed(true);
-    } else {
-      setWinnerRevealed(true);
-    }
-  };
-
   useEffect(() => {
-    if (!activeSlide) return;
-    const key: string = activeSlide[0];
-    if (lastSlideKeyRef.current === key) return;
-    lastSlideKeyRef.current = key;
-    setWinnerRevealed(false);
-    setPodiumRevealed(false);
-    setWinnerSettled(false);
-  }, [activeSlide]);
-
-  useEffect(() => {
-    if (!availableSuperlatives.length) return;
-    if (deckRestoreDoneRef.current) return;
-    deckRestoreDoneRef.current = true;
-    let saved: {
-      chatId: string | null;
-      slideIndex: number;
-      winnerRevealed: boolean;
-      podiumRevealed: boolean;
-      winnerSettled: boolean;
-    } | null = null;
-    try {
-      saved = JSON.parse(window.sessionStorage.getItem(DECK_STATE_KEY) ?? "null");
-    } catch {
-      saved = null;
-    }
-    if (!saved) return;
-    if (saved.chatId !== activeSavedReportId) return;
-    const idx = Math.min(
-      Math.max(0, saved.slideIndex ?? 0),
-      availableSuperlatives.length - 1,
-    );
-    lastSlideKeyRef.current = availableSuperlatives[idx][0];
-    setSlideIndex(idx);
-    setWinnerRevealed(saved.winnerRevealed);
-    setPodiumRevealed(saved.podiumRevealed);
-    setWinnerSettled(saved.winnerSettled);
-    setViewedSlides((prev) => new Set(prev).add(idx));
-  }, [availableSuperlatives.length, activeSavedReportId]);
-
-  useEffect(() => {
-    if (!deckRestoreDoneRef.current) return;
-    try {
-      window.sessionStorage.setItem(
-        DECK_STATE_KEY,
-        JSON.stringify({
-          chatId: activeSavedReportId,
-          slideIndex,
-          winnerRevealed,
-          podiumRevealed,
-          winnerSettled,
-        }),
-      );
-    } catch {
-      /* ignore */
-    }
-  }, [
-    slideIndex,
-    winnerRevealed,
-    podiumRevealed,
-    winnerSettled,
-    activeSavedReportId,
-  ]);
-
-  useEffect(() => {
-    if (!activeSlide || !autoPlay) return;
-    const PRE = 2500,
-      REVEAL = 3000,
-      PODIUM = 6000;
-    const advance = () => {
-      setExpandedSuperlative(null);
-      setSlideIndex((current) => {
-        if (current >= availableSuperlatives.length - 1) {
-          setAutoPlay(false);
-          return current;
-        }
-        setSlideDirection("right");
-        return current + 1;
-      });
-    };
-    const timers: number[] = [];
-    if (!winnerRevealed) {
-      timers.push(window.setTimeout(() => setWinnerRevealed(true), PRE));
-      timers.push(
-        window.setTimeout(() => setPodiumRevealed(true), PRE + REVEAL),
-      );
-      timers.push(window.setTimeout(advance, PRE + REVEAL + PODIUM));
-    } else if (!podiumRevealed) {
-      timers.push(window.setTimeout(() => setPodiumRevealed(true), REVEAL));
-      timers.push(window.setTimeout(advance, REVEAL + PODIUM));
-    } else {
-      timers.push(window.setTimeout(advance, PODIUM));
-    }
-    return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [
-    report,
-    autoPlay,
-    activeSlide?.[0],
-    winnerRevealed,
-    podiumRevealed,
-    availableSuperlatives.length,
-    visibilityTick,
-  ]);
-
-  useEffect(() => {
-    function onVisibility() {
-      if (document.hidden) return;
-      setVisibilityTick((t) => t + 1);
-    }
-    document.addEventListener("visibilitychange", onVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", onVisibility);
-  }, []);
-
-  useEffect(() => {
-    setViewedSlides((prev) => new Set(prev).add(activeSlideIndex));
-  }, [activeSlideIndex]);
+    setViewedSlides((prev) => new Set(prev).add(slideIndex));
+  }, [slideIndex]);
 
   useEffect(() => {
     if (!podiumRevealed) return;
@@ -1370,8 +956,7 @@ export default function Home() {
       const dx = to.left - from.left;
       const dy = to.top - from.top;
       name.style.transformOrigin = "left top";
-      name.style.transform =
-        `translate(${dx}px, ${dy}px) scale(${scale})`;
+      name.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
     });
     const settle = window.setTimeout(() => {
       setWinnerSettled(true);
@@ -1382,1255 +967,755 @@ export default function Home() {
     };
   }, [podiumRevealed]);
 
+  const restoreScrollRef = useRef<number | null>(null);
+  const closeRankingRef = useRef<() => void>(() => {});
+
   useEffect(() => {
-    if (!(activeSlide && activeWinner)) return;
-    function onKey(event: KeyboardEvent) {
-      if (event.code !== "Space") return;
-      const target = event.target as HTMLElement | null;
-      const isTyping =
-        !!target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable);
-      if (isTyping) return;
-      event.preventDefault();
-      manualStepForward();
+    closeRankingRef.current = () => {
+      setExpanded(false);
+      setClosing(true);
+      window.setTimeout(() => setClosing(false), 1200);
+    };
+  });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const behavior: ScrollBehavior = reduce ? "auto" : "smooth";
+    const raf = requestAnimationFrame(() => {
+      const section = ref.current;
+      const cRect = container.getBoundingClientRect();
+      const sRect = section ? section.getBoundingClientRect() : null;
+      const start = sRect
+        ? sRect.top - cRect.top + container.scrollTop - 90
+        : 0;
+      const end = sRect && section ? start + section.offsetHeight : 0;
+      const current = container.scrollTop;
+      const inSection = current >= start && current <= end;
+      if (expanded) {
+        restoreScrollRef.current = container.scrollTop;
+        const el = expandRef.current;
+        if (el && inSection) {
+          const top =
+            el.getBoundingClientRect().top +
+            container.scrollTop -
+            (reduce ? 90 : 140);
+          container.scrollTo({ top: Math.max(0, top), behavior });
+        }
+      } else if (restoreScrollRef.current != null) {
+        if (inSection) {
+          container.scrollTo({
+            top: restoreScrollRef.current,
+            behavior,
+          });
+        }
+        restoreScrollRef.current = null;
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [expanded, containerRef]);
+
+  useEffect(() => {
+    let stopped = false;
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    async function until(test: () => boolean) {
+      const start = Date.now();
+      while (!test() && !stopped) {
+        if (Date.now() - start > 7000) return;
+        await sleep(40);
+      }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [activeSlide, activeWinner]);
+
+    async function press(action: () => void) {
+      action();
+      await sleep(150);
+    }
+
+    (async () => {
+      await sleep(1400);
+      while (!stopped) {
+        await until(() => Boolean(suspenseRef.current));
+        await press(() => setWinnerRevealed(true));
+
+        await until(() => Boolean(spotlightRef.current));
+        await sleep(1300);
+        await press(() => setPodiumRevealed(true));
+
+        await sleep(1700);
+        const idx = slideIndexRef.current;
+
+        if (idx === 1) {
+          await until(() => Boolean(expandRef.current));
+          await press(() => {
+            setClosing(false);
+            setExpanded(true);
+          });
+          await sleep(2000);
+          await press(closeRankingRef.current);
+          await sleep(1500);
+        }
+
+        if (idx === 2) {
+          await sleep(500);
+          await press(() => goToSlide(1, "left"));
+          await until(() => Boolean(suspenseRef.current));
+          await sleep(1300);
+          await press(() => goToSlide(2, "right"));
+          await until(() => Boolean(suspenseRef.current));
+          await sleep(1300);
+        }
+
+        await press(() => goToSlide(slideIndexRef.current + 1, "right"));
+        await until(() => Boolean(suspenseRef.current));
+        await sleep(1800);
+      }
+    })();
+
+    return () => {
+      stopped = true;
+    };
+  }, []);
+
+  const ranking = expanded || closing ? demoFullRanking(activeKey) : [];
 
   return (
-    <div className="app-layout">
-      <aside className="sidebar">
-        <div className="brand">
-          CHAT<span> STATS</span>
-        </div>
-        <div className="account">
-          {user ? (
-            <div className="account-wrapper">
-              <button
-                className={`user-line${accountMenuOpen ? " open" : ""}`}
-                onClick={() => setAccountMenuOpen(!accountMenuOpen)}
-              >
-                <span className="avatar">
-                  {avatarUrl ? (
-                    <img src={avatarUrl} alt="" />
-                  ) : (
-                    (user.email ?? "?")[0].toUpperCase()
-                  )}
-                </span>
-                <span title={user.email ?? "Signed in"}>{user.email}</span>
-              </button>
-              {accountMenuOpen && (
-                <div className="account-dropdown">
-                  <button onClick={openProfile}>
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                      <circle cx="12" cy="7" r="4" />
-                    </svg>
-                    Profile
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAccountMenuOpen(false);
-                      setSettingsOpen(true);
-                    }}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="3" />
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                    Settings
-                  </button>
-                  <button onClick={signOut}>
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                      <polyline points="16 17 21 12 16 7" />
-                      <line x1="21" y1="12" x2="9" y2="12" />
-                    </svg>
-                    Sign out
-                  </button>
-                </div>
-              )}
+    <section
+      className="landing-showcase"
+      ref={ref}
+      aria-label="Product preview"
+    >
+      <motion.div
+        className="showcase-tilt"
+        style={{ y: parallaxY, rotateX, transformPerspective: 1200 }}
+      >
+        <div className="showcase-window">
+          <div className="showcase-chrome">
+            <span
+              className="showcase-dot showcase-dot--red"
+              aria-hidden="true"
+            />
+            <span
+              className="showcase-dot showcase-dot--amber"
+              aria-hidden="true"
+            />
+            <span
+              className="showcase-dot showcase-dot--green"
+              aria-hidden="true"
+            />
+            <span className="showcase-url">chatstats.app/app</span>
+          </div>
+
+          <div className="demo-app" ref={appBoxRef}>
+            <div className="summary">
+              <div>
+                <span>Conversation</span>
+                <strong>The Dinner Crew</strong>
+              </div>
+              <div>
+                <span>Messages</span>
+                <strong>8,412</strong>
+              </div>
+              <div>
+                <span>Participants</span>
+                <strong>{demoParticipants}</strong>
+              </div>
+              <div>
+                <span>Reactions</span>
+                <strong>1,203</strong>
+              </div>
             </div>
-          ) : (
-            <button className="google-button" onClick={signInWithGoogle}>
-              Continue with Google
-            </button>
-          )}
-        </div>
-        <button
-          className={`sidebar-tab${homeView ? " active" : ""}`}
-          onClick={() => {
-            pushChatIdInUrl(null);
-            openChatById(null);
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ verticalAlign: "-2px", marginRight: 6 }}
-          >
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
-          Home
-        </button>
-        <div className="history-heading">
-          <span>Saved group chats</span>
-          <div className="history-heading-actions">
-            {user && savedReports.length > 0 && (
+
+            <div className="deck-counter-row">
+              <div className="deck-counter">
+                SUPERLATIVE {slideIndex + 1} OF {N}
+              </div>
               <button
-                className="search-button"
-                aria-label="Search chats"
-                onClick={() => {
-                  setSearchQuery("");
-                  setSearchOpen(true);
-                }}
+                type="button"
+                className="autoplay-toggle"
+                aria-label="Playing demo"
+                title="Auto-playing demo"
+                tabIndex={-1}
               >
                 <svg
                   width="14"
                   height="14"
                   viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+                  fill="currentColor"
                 >
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  <polygon points="6 3 20 12 6 21 6 3" />
                 </svg>
+                <span>Auto</span>
               </button>
-            )}
-            <span className="count">{savedReports.length}</span>
-          </div>
-        </div>
-        <div className="history-list">
-          {savedReports.length === 0 ? (
-            <p className="empty-history">
-              Your analyzed chats will appear here.
-            </p>
-          ) : (
-            savedReports.map((item) => (
-              <div className="history-item" key={item.id}>
-                <button
-                  className={
-                    item.id === activeSavedReportId ? "active-chat" : undefined
-                  }
-                  onClick={() => {
-                    pushChatIdInUrl(item.id);
-                    openChatById(item.id);
-                  }}
-                >
-                  <strong>{item.title}</strong>
-                  <small>
-                    {item.message_count} messages ·{" "}
-                    {formatDate(item.created_at)}
-                  </small>
-                </button>
-                <button
-                  className="delete-button"
-                  aria-label={`Delete ${item.title}`}
-                  onClick={() => void removeReport(item.id)}
-                >
-                  ×
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-        <p className="sidebar-note">
-          {user
-            ? "Saved privately in your account."
-            : "Saved in this browser. Sign in to keep history across devices."}
-        </p>
-      </aside>
-      <main className="content" ref={contentRef}>
-        {loadingReport && (
-          <section className="panel deck-loading">
-            <p className="eyebrow">CHAT STATS</p>
-            <div className="spinner" aria-hidden="true" />
-            <p>Loading your report…</p>
-          </section>
-        )}
-        {!loadingReport && homeView && (
-          <>
-            <section className="hero">
-              <p className="eyebrow">CHAT STATS</p>
-              <h1>
-                {typedText}
-                <span className="cursor">|</span>
-              </h1>
-              <p className="lede">
-                Upload an iMessage export and get unexpected superlatives.
-              </p>
-            </section>
-            <section className="panel">
-              <form onSubmit={submit} className="upload-form">
-                <div className="form-fields">
-                  <label>
-                    Chat export
-                    <input
-                      type="file"
-                      accept=".json,.csv,.sqlite,.sqlite3,.db"
-                      onChange={(event) =>
-                        onFileChange(event.target.files?.[0] ?? null)
-                      }
-                    />
-                    <small className="field-help">
-                      Upload an iMessage chat.db file.
-                    </small>
-                  </label>
-                  <label>
-                    Contacts (optional)
-                    <input
-                      type="file"
-                      accept=".vcf,.vcard"
-                      onChange={(event) =>
-                        void onContactsFileChange(
-                          event.target.files?.[0] ?? null,
-                        )
-                      }
-                    />
-                    <small className="field-help">
-                      {contactsFile
-                        ? `${contactsFile.name} — ${contactsMap.size} contact${
-                            contactsMap.size === 1 ? "" : "s"
-                          } loaded.`
-                        : "Optional .vcf export to map phone numbers to names."}
-                    </small>
-                  </label>
-                  <label>
-                    Timezone for timing metrics
-                    <select
-                      value={timezone}
-                      onChange={(event) => setTimezone(event.target.value)}
-                    >
-                      {TIMEZONE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <small className="field-help">
-                      Used for time-based superlatives.
-                    </small>
-                  </label>
-                </div>
-                {unavailableFormat && (
-                  <div className="under-construction upload-warning">
-                    <strong>
-                      {unavailableFormat} uploads are not available yet
-                    </strong>
-                    <span>
-                      Please select an iMessage SQLite file to continue.
-                    </span>
-                  </div>
-                )}
-                <button
-                  disabled={
-                    !file ||
-                    Boolean(unavailableFormat) ||
-                    busy ||
-                    selectedIsAnalyzed
-                  }
-                >
-                  {busy
-                    ? "Analyzing\u2026"
-                    : unavailableFormat
-                      ? "Format unavailable"
-                      : conversationChoices.length > 0 &&
-                          !selectedConversationId
-                        ? "Choose a group chat"
-                        : selectedIsAnalyzed
-                          ? "Already saved"
-                          : conversationChoices.length > 0
-                            ? "Analyze selected chat"
-                            : "Analyze chat"}
-                </button>
-              </form>
-              {busy && (
-                <div className="progress-panel">
-                  <div className="progress-heading">
-                    <strong>{progressStage}</strong>
-                    <span>{progress}%</span>
-                  </div>
-                  <progress max="100" value={progress} />
-                </div>
-              )}
-              {conversationChoices.length > 0 && (
-                <div className="conversation-picker">
-                  <label>
-                    Search conversations
-                    <div className="search-input-wrapper">
-                      <input
-                        type="search"
-                        placeholder="Click to browse or type a group name…"
-                        value={conversationSearch}
-                        onFocus={() => setConversationSearchActive(true)}
-                        onBlur={() => {
-                          // Delay so click handlers on results fire first.
-                          window.setTimeout(() => {
-                            setConversationSearchActive(false);
-                          }, 150);
-                        }}
-                        onChange={(event) => {
-                          setConversationSearchActive(true);
-                          setConversationSearch(event.target.value);
-                        }}
-                      />
-                      {selectedConversationId && (
-                        <button
-                          type="button"
-                          className="search-clear-btn"
-                          onClick={() => {
-                            setConversationSearchActive(true);
-                            setSelectedConversationId("");
-                            setConversationSearch("");
-                          }}
-                          aria-label="Clear selection"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  </label>
-                  {(() => {
-                    const selectedChoice = selectedConversationId
-                      ? [...conversationChoices, ...visibleChoices].find(
-                          (c) => c.conversation_id === selectedConversationId,
-                        )
-                      : null;
-                    const showDropdown =
-                      conversationSearchActive || selectedChoice;
-                    if (!showDropdown) {
-                      return (
-                        <p className="privacy">
-                          Click the search bar to browse all{" "}
-                          {conversationChoices.length} conversations.
-                        </p>
-                      );
-                    }
-                    return (
-                      <>
-                        {selectedChoice && !conversationSearchActive && (
-                          <div className="conversation-results" role="listbox">
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected
-                              className="conversation-result selected collapsed-selected"
-                              onClick={() => setConversationSearchActive(true)}
-                            >
-                              <span>
-                                <strong>
-                                  {selectedChoice.title}
-                                  {analyzedChoiceIds.has(
-                                    selectedChoice.conversation_id,
-                                  ) && (
-                                    <span className="analyzed-badge">
-                                      Previously analyzed
-                                    </span>
-                                  )}
-                                </strong>
-                                <small>
-                                  {selectedChoice.participant_count} people ·{" "}
-                                  {selectedChoice.message_count} messages
-                                  {" \u00b7 Click to change"}
-                                </small>
-                              </span>
-                            </button>
-                          </div>
-                        )}
-                        {conversationSearchActive && (
-                          <>
-                            <div
-                              className="conversation-results"
-                              role="listbox"
-                              aria-label="Conversations"
-                            >
-                              {selectedConversationId
-                                ? (() => {
-                                    const selected = visibleChoices.find(
-                                      (c) =>
-                                        c.conversation_id ===
-                                        selectedConversationId,
-                                    );
-                                    if (!selected) return null;
-                                    const isAnalyzed = analyzedChoiceIds.has(
-                                      selected.conversation_id,
-                                    );
-                                    return (
-                                      <button
-                                        type="button"
-                                        role="option"
-                                        aria-selected
-                                        className="conversation-result selected"
-                                        onClick={() => {
-                                          setConversationSearchActive(true);
-                                          setSelectedConversationId("");
-                                          setConversationSearch("");
-                                        }}
-                                      >
-                                        <span>
-                                          <strong>
-                                            {selected.title}
-                                            {isAnalyzed && (
-                                              <span className="analyzed-badge">
-                                                Previously analyzed
-                                              </span>
-                                            )}
-                                          </strong>
-                                          <small>
-                                            {selected.participant_names?.length
-                                              ? selected.participant_names.join(
-                                                  ", ",
-                                                )
-                                              : selected.is_named
-                                                ? "Named group or conversation"
-                                                : "Other conversation"}
-                                          </small>
-                                        </span>
-                                        <span className="conversation-stats">
-                                          {selected.participant_count} people ·{" "}
-                                          {selected.message_count} messages
-                                          {isAnalyzed && (
-                                            <span className="update-hint">
-                                              \nClick Analyze to update
-                                            </span>
-                                          )}
-                                        </span>
-                                      </button>
-                                    );
-                                  })()
-                                : visibleChoices.map((choice) => {
-                                    const isAnalyzed = analyzedChoiceIds.has(
-                                      choice.conversation_id,
-                                    );
-                                    return (
-                                      <button
-                                        type="button"
-                                        role="option"
-                                        aria-selected={false}
-                                        disabled={isAnalyzed}
-                                        className={`conversation-result${isAnalyzed ? " previously-analyzed" : ""}`}
-                                        onClick={() => {
-                                          setConversationSearchActive(true);
-                                          setSelectedConversationId(
-                                            choice.conversation_id,
-                                          );
-                                        }}
-                                        key={choice.conversation_id}
-                                      >
-                                        <span>
-                                          <strong>
-                                            {choice.title}
-                                            {isAnalyzed && (
-                                              <span className="analyzed-badge">
-                                                Previously analyzed
-                                              </span>
-                                            )}
-                                          </strong>
-                                          <small>
-                                            {choice.participant_names?.length
-                                              ? choice.participant_names.join(
-                                                  ", ",
-                                                )
-                                              : choice.is_named
-                                                ? "Named group or conversation"
-                                                : "Other conversation"}
-                                          </small>
-                                        </span>
-                                        <span className="conversation-stats">
-                                          {choice.participant_count} people ·{" "}
-                                          {choice.message_count} messages
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
-                            </div>
-                            {!selectedConversationId && (
-                              <p className="privacy">
-                                Showing {visibleChoices.length} of{" "}
-                                {conversationChoices.length} conversations.
-                                Named groups are listed first; click a
-                                conversation to select or update it.
-                              </p>
-                            )}
-                            {visibleChoices.length === 0 &&
-                              !selectedConversationId && (
-                                <p className="error">
-                                  No conversations match that search.
-                                </p>
-                              )}
-                          </>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-              <p className="privacy">
-                With Google sign-in, reports are saved to your private account
-                history.
-              </p>
-              {error && <p className="error">{error}</p>}
-            </section>
-            <section className="panel instructions-panel">
-              <h2>How to get your chat file</h2>
-              <details open>
-                <summary>iMessage on a Mac</summary>
-                <ol>
-                  <li>
-                    Open Finder and choose <strong>Go → Go to Folder</strong>.
-                  </li>
-                  <li>
-                    Enter <code>~/Library/Messages/</code> and press Enter.
-                  </li>
-                  <li>
-                    Make a copy of <code>chat.db</code> and upload the copy.
-                    Never move or edit the original.
-                  </li>
-                  <li>
-                    If the database contains multiple conversations, the app
-                    will show a list so you can choose the group chat to
-                    analyze.
-                  </li>
-                  <li>
-                    Do not upload screenshots, PDFs, a media folder, or your
-                    entire phone backup.
-                  </li>
-                </ol>
-                <p className="privacy">
-                  Apple usually stores phone numbers and emails in{" "}
-                  <code>chat.db</code>, not your Contacts names. Upload a{" "}
-                  <strong>Contacts .vcf export</strong> (below) and matching
-                  numbers are mapped to names automatically. After analysis you
-                  can still use the <strong>Name participants</strong> panel to
-                  label anyone. The deck shows each person's first name; full
-                  names stay in the <strong>Name participants</strong> panel and
-                  in the saved report.
-                </p>
-              </details>
-              <details>
-                <summary>
-                  Export your Contacts as a vCard (.vcf) on a Mac
-                </summary>
-                <ol>
-                  <li>
-                    Open the <strong>Contacts</strong> app on your Mac.
-                  </li>
-                  <li>
-                    Select the contacts you want to include. To choose everyone,
-                    use <strong>Edit → Select All</strong>.
-                  </li>
-                  <li>
-                    In the menu bar choose{" "}
-                    <strong>File → Export → Export vCard</strong>.
-                  </li>
-                  <li>
-                    Save the file (it will have the <code>.vcf</code> extension)
-                    somewhere you can find it.
-                  </li>
-                  <li>
-                    Back here, upload that <code>.vcf</code> in the{" "}
-                    <strong>Contacts (optional)</strong> field alongside your{" "}
-                    <code>chat.db</code>, then analyze.
-                  </li>
-                </ol>
-                <p className="privacy">
-                  The file is read entirely on this page and never leaves your
-                  browser (only the resulting report is sent as usual).
-                </p>
-              </details>
-              <div className="locked-format" aria-disabled="true">
-                <span>Instagram group chat</span>
-                <span className="coming-soon-pill">Coming soon · locked</span>
-              </div>
-              <div className="locked-format" aria-disabled="true">
-                <span>CSV file</span>
-                <span className="coming-soon-pill">Coming soon · locked</span>
-              </div>
-              <hr className="format-divider" />
-              <p className="privacy">
-                Currently supported: iMessage <code>chat.db</code>,{" "}
-                <code>.sqlite</code>, or <code>.sqlite3</code> files. Instagram
-                and CSV uploads are temporarily unavailable.
-              </p>
-            </section>
-          </>
-        )}
-        {displayedReport && (
-          <section>
-            <div className="summary">
-              <div>
-                <span>Conversation</span>
-                <strong>{displayedReport.conversation_summary.title}</strong>
-              </div>
-              <div>
-                <span>Messages</span>
-                <strong>{animMessages}</strong>
-              </div>
-              <div>
-                <span>Participants</span>
-                <strong>{animParticipants}</strong>
-              </div>
-              <div>
-                <span>Reactions</span>
-                <strong>{animReactions}</strong>
-              </div>
             </div>
-            {activeSlide && activeWinner && (
-              <>
-                <div className="deck-counter-row">
-                  <div className="deck-counter">
-                    SUPERLATIVE {activeSlideIndex + 1} OF{" "}
-                    {availableSuperlatives.length}
-                  </div>
-                  <button
-                    type="button"
-                    className="autoplay-toggle"
-                    onClick={() => setAutoPlay((p) => !p)}
-                    aria-label={
-                      autoPlay ? "Pause auto-advance" : "Start auto-advance"
-                    }
-                    title={autoPlay ? "Pause slideshow" : "Auto-advance slides"}
-                  >
-                    {autoPlay ? (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <rect x="6" y="4" width="4" height="16" rx="1" />
-                        <rect x="14" y="4" width="4" height="16" rx="1" />
-                      </svg>
-                    ) : (
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <polygon points="5,3 19,12 5,21" />
-                      </svg>
-                    )}
-                    <span>{autoPlay ? "Pause" : "Play"}</span>
-                  </button>
-                </div>
-                <div className="deck-stage">
-                  <div
-                    className={`superlative-deck${podiumRevealed ? " podium-deck" : ""}`}
-                    onClick={(event) => {
-                      const target = event.target as HTMLElement | null;
-                      if (
-                        target?.closest(
-                          ".deck-arrow, .deck-dot, .expand-button, .winner-suspense, .winner-spotlight",
-                        )
-                      ) {
-                        return;
-                      }
-                      manualStepForward();
-                    }}
-                  >
-                    <div
-                      key={`${activeSlide[0]}-${activeSlideIndex}`}
-                      className="deck-slide-content"
-                      data-direction={slideDirection}
-                    >
-                      <div className="deck-intro">
-                        <span className="deck-category">
-                          {titleLabels[activeSlide[0]] ?? activeSlide[0]}
-                        </span>
-                        <p>
-                          {superlativeDescriptions[activeSlide[0]] ??
-                            "A group-chat ranking based on message activity."}
-                        </p>
-                      </div>
-                      <div
-                        className={
-                          podiumRevealed
-                            ? "deck-winner podium"
-                            : winnerRevealed
-                              ? "deck-winner revealed"
-                              : "deck-winner"
-                        }
-                      >
-                        <button
-                          type="button"
-                          className="deck-arrow deck-arrow-left"
-                          aria-label="Previous superlative"
-                          disabled={activeSlideIndex === 0}
-                          onClick={() => {
-                            setSlideDirection("left");
-                            setSlideIndex((current) =>
-                              Math.max(0, current - 1),
-                            );
-                            setExpandedSuperlative(null);
-                            setWinnerRevealed(false);
-                            setPodiumRevealed(false);
-                            setWinnerSettled(false);
-                          }}
-                        >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="15 18 9 12 15 6" />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          className="deck-arrow deck-arrow-right"
-                          aria-label="Next superlative"
-                          disabled={
-                            activeSlideIndex ===
-                            availableSuperlatives.length - 1
-                          }
-                          onClick={advanceToNextSlide}
-                        >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="9 18 15 12 9 6" />
-                          </svg>
-                        </button>
-                        {!winnerRevealed && (
-                          <div
-                            className="winner-suspense"
-                            onClick={() => setWinnerRevealed(true)}
-                            style={{ cursor: "pointer" }}
-                          >
-                            <div className="winner-skeleton">
-                              <div className="skeleton-bar skeleton-bar-lg" />
-                              <div className="skeleton-bar skeleton-bar-sm" />
-                              <div className="skeleton-bar skeleton-bar-md" />
-                            </div>
-                            <p className="winner-tease">
-                              Tap to reveal the winner
-                            </p>
-                          </div>
-                        )}
-                        {winnerRevealed && (
-                          <div
-                            className="winner-spotlight"
-                            onClick={() => {
-                              if (!podiumRevealed) setPodiumRevealed(true);
-                            }}
-                            style={
-                              !podiumRevealed
-                                ? { cursor: "pointer" }
-                                : undefined
-                            }
-                          >
-                            <span className="winner-label">1ST PLACE</span>
-                            <h2
-                              ref={winnerNameRef}
-                              className={`winner-name${podiumRevealed ? " landing" : ""}${winnerSettled ? " settled" : ""}`}
-                            >
-                              {activeWinner.participant}
-                            </h2>
-                          </div>
-                        )}
-                        {podiumRevealed && (
-                          <div className="podium-section">
-                            <div className="podium">
-                              <div className="podium-bars">
-                                {podium2nd && (
-                                  <div className="podium-bar-unit">
-                                    <span className="podium-bar-name podium-name-silver">
-                                      <img
-                                        src="/crown-silver.svg"
-                                        alt=""
-                                        className="podium-crown"
-                                      />{" "}
-                                      {podium2nd.participant}
-                                    </span>
-                                    <div className="podium-bar podium-silver">
-                                      <div className="podium-placement-circle podium-circle-silver">
-                                        {podiumRows.length > 1 ? "2" : "-"}
-                                      </div>
-                                      <span className="podium-bar-outof">
-                                        out of {podiumRows.length}
-                                      </span>
-                                      <span className="podium-bar-stat">
-                                        {podiumPrimaryStat(
-                                          activeSlide[0],
-                                          podium2nd,
-                                        )}
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
-                                <div className="podium-bar-unit">
-                                  <span className="podium-bar-name podium-name-gold">
-                                    <img
-                                      ref={podiumCrownRef}
-                                      src="/crown-gold.svg"
-                                      alt=""
-                                      className="podium-crown"
-                                    />
-                                    <span
-                                      ref={podiumFinalNameRef}
-                                      className={`podium-final-name${winnerSettled ? " visible" : ""}`}
-                                    >
-                                      {activeWinner.participant}
-                                    </span>
-                                  </span>
-                                  <div className="podium-bar podium-gold">
-                                    <div className="podium-placement-circle podium-circle-gold">
-                                      {podiumRows.length > 0 ? "1" : "-"}
-                                    </div>
-                                    <span className="podium-bar-outof">
-                                      out of {podiumRows.length}
-                                    </span>
-                                    <span className="podium-bar-stat">
-                                      {podiumPrimaryStat(
-                                        activeSlide[0],
-                                        activeWinner,
-                                      )}
-                                    </span>
-                                  </div>
-                                </div>
-                                {podium3rd && (
-                                  <div className="podium-bar-unit">
-                                    <span className="podium-bar-name podium-name-bronze">
-                                      <img
-                                        src="/crown-bronze.svg"
-                                        alt=""
-                                        className="podium-crown"
-                                      />{" "}
-                                      {podium3rd.participant}
-                                    </span>
-                                    <div className="podium-bar podium-bronze">
-                                      <div className="podium-placement-circle podium-circle-bronze">
-                                        {podiumRows.length > 2 ? "3" : "-"}
-                                      </div>
-                                      <span className="podium-bar-outof">
-                                        out of {podiumRows.length}
-                                      </span>
-                                      <span className="podium-bar-stat">
-                                        {podiumPrimaryStat(
-                                          activeSlide[0],
-                                          podium3rd,
-                                        )}
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <p className="podium-detail">
-                              {rankingDetail(activeSlide[0], activeWinner)}
-                            </p>
-                            <div className="deck-action-row">
-                              <button
-                                type="button"
-                                className="expand-button"
-                                onClick={() =>
-                                  setExpandedSuperlative(
-                                    expandedSuperlative === activeSlide[0]
-                                      ? null
-                                      : activeSlide[0],
-                                  )
-                                }
-                              >
-                                {expandedSuperlative === activeSlide[0]
-                                  ? "Hide full ranking"
-                                  : `Expand ranking · ${podiumRows.length} members`}
-                              </button>
-                            </div>
-                            {expandedSuperlative === activeSlide[0] && (
-                              <div className="ranking-collapse-wrapper open">
-                                <div className="ranking-collapse-inner">
-                                  <div className="ranking-panel">
-                                    <strong>Full ranking</strong>
-                                    {podiumRows.length === 0 ? (
-                                      <p className="privacy">
-                                        Detailed rankings are not available for
-                                        this saved report.
-                                      </p>
-                                    ) : (
-                                      <ol>
-                                        {podiumRows.map((row, index) => (
-                                          <li
-                                            key={
-                                              row.participant_id ??
-                                              `${activeSlide[0]}-${row.participant}-${index}`
-                                            }
-                                          >
-                                            <div>
-                                              <strong>
-                                                {`${index + 1}. ${row.participant}`}
-                                              </strong>
-                                              <span>
-                                                {rankingDetail(
-                                                  activeSlide[0],
-                                                  row,
-                                                )}
-                                              </span>
-                                            </div>
-                                          </li>
-                                        ))}
-                                      </ol>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="deck-navigation">
-                    <div className="deck-dots" aria-label="Superlative slides">
-                      {availableSuperlatives.map(([key], index) => (
-                        <button
-                          type="button"
-                          key={key}
-                          className={
-                            key === activeSlide[0]
-                              ? "deck-dot active"
-                              : viewedSlides.has(index)
-                                ? "deck-dot viewed"
-                                : "deck-dot"
-                          }
-                          aria-label={`Go to ${titleLabels[key] ?? key}`}
-                          aria-current={
-                            key === activeSlide[0] ? "step" : undefined
-                          }
-                          onClick={() => {
-                            const targetIndex = availableSuperlatives.findIndex(
-                              ([slideKey]) => slideKey === key,
-                            );
-                            setSlideDirection(
-                              targetIndex > activeSlideIndex ? "right" : "left",
-                            );
-                            setSlideIndex(targetIndex);
-                            setExpandedSuperlative(null);
-                            setWinnerRevealed(false);
-                            setPodiumRevealed(false);
-                            setWinnerSettled(false);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-            {availableSuperlatives.length === 0 && (
-              <div className="panel">
-                <p>No superlatives have enough data to display yet.</p>
-              </div>
-            )}
-            <p className="note">
-              The category and first-place position appear before the winner is
-              revealed. Use the arrows or dots to move through the superlatives.
-            </p>
-            {contactsFile && unmatchedCount > 0 && (
-              <p className="note">
-                {unmatchedCount} phone number{unmatchedCount === 1 ? "" : "s"}{" "}
-                {unmatchedCount === 1 ? "was" : "were"} not found in your
-                contacts file. Use the Name participants panel below to label{" "}
-                {unmatchedCount === 1 ? "it" : "them"}.
-              </p>
-            )}
-            {participantsToName.length > 0 && (
-              <div className="panel names-panel">
-                <h2>Name participants</h2>
-                <p className="privacy">
-                  Assign a name to every participant in the conversation below.
-                </p>
-                <div className="name-fields">
-                  {participantsToName.map((person) => {
-                    const isMe = person.participant_id === meId;
-                    const inputValue = isMe
-                      ? (participantNames[person.participant_id] ?? username)
-                      : (participantNames[person.participant_id] ?? "");
-                    return (
-                      <label key={person.participant_id}>
-                        <span>
-                          {person.display_name === "Me"
-                            ? username.trim()
-                              ? `You (default: ${firstNameOf(username)})`
-                              : "You"
-                            : person.display_name}
-                        </span>
-                        <input
-                          value={inputValue}
-                          onChange={(event) =>
-                            setParticipantNames((current) => ({
-                              ...current,
-                              [person.participant_id]: event.target.value,
-                            }))
-                          }
-                          placeholder={
-                            isMe && username.trim()
-                              ? firstNameOf(username)
-                              : "New name"
-                          }
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void applyParticipantNames()}
-                >
-                  Apply names
-                </button>
-              </div>
-            )}
-          </section>
-        )}
-        {settingsOpen && user && (
-          <div
-            className="settings-overlay"
-            onClick={() => setSettingsOpen(false)}
-          >
-            <div
-              className="settings-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="settings-title"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="settings-modal-head">
-                <h2 id="settings-title">Settings</h2>
-                <button
-                  type="button"
-                  className="settings-close"
-                  onClick={() => setSettingsOpen(false)}
-                  aria-label="Close settings"
-                >
-                  ×
-                </button>
-              </div>
-              <div className="settings-body">
-                <p className="settings-hint">
-                  No settings here yet. Use Profile to manage your name and
-                  picture.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {profileOpen && user && (
-          <div
-            className="settings-overlay"
-            onClick={() => setProfileOpen(false)}
-          >
-            <div
-              className="settings-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="profile-title"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="settings-modal-head">
-                <h2 id="profile-title">Edit profile</h2>
-                <button
-                  type="button"
-                  className="settings-close"
-                  onClick={() => setProfileOpen(false)}
-                  aria-label="Close profile"
+            <div className="deck-stage">
+              <div
+                className={`superlative-deck${podiumRevealed ? " podium-deck" : ""}`}
+              >
+                <div
+                  key={`${activeKey}-${slideIndex}`}
+                  className="deck-slide-content"
+                  data-direction={slideDirection}
                 >
-                  ×
-                </button>
-              </div>
-              <div className="settings-body profile-body">
-                <div className="profile-avatar-wrap">
-                  <span className="avatar-profile">
-                    {avatarDraft ? (
-                      <img
-                        src={URL.createObjectURL(avatarDraft)}
-                        alt="Profile preview"
-                      />
-                    ) : avatarUrl ? (
-                      <img src={avatarUrl} alt="" />
-                    ) : (
-                      (user.email ?? "?")[0].toUpperCase()
-                    )}
-                    <label className="avatar-camera" title="Change picture">
+                  <div className="deck-intro">
+                    <span className="deck-category">
+                      {demoTitleLabels[activeKey] ?? activeKey}
+                    </span>
+                    <p>{demoDescriptions[activeKey] ?? ""}</p>
+                  </div>
+                  <div
+                    className={
+                      podiumRevealed
+                        ? "deck-winner podium"
+                        : winnerRevealed
+                          ? "deck-winner revealed"
+                          : "deck-winner"
+                    }
+                  >
+                    <button
+                      type="button"
+                      ref={leftArrowRef}
+                      className="deck-arrow deck-arrow-left"
+                      aria-label="Previous superlative"
+                      tabIndex={-1}
+                      onClick={() => goToSlide(slideIndex - 1, "left")}
+                    >
                       <svg
                         width="16"
                         height="16"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
-                        strokeWidth="2"
+                        strokeWidth="2.5"
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       >
-                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                        <circle cx="12" cy="13" r="4" />
+                        <polyline points="15 18 9 12 15 6" />
                       </svg>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file) {
-                            setAvatarDraft(file);
-                            setRemoveAvatarFlag(false);
-                          }
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                  </span>
-                </div>
-                <div className="profile-fields">
-                  <label className="settings-field profile-field-floating">
-                    <span className="settings-label">Display name</span>
-                    <input
-                      value={usernameDraft}
-                      onChange={(event) => setUsernameDraft(event.target.value)}
-                      placeholder={
-                        username.trim()
-                          ? firstNameOf(username)
-                          : "Set a username"
-                      }
-                    />
-                  </label>
-                </div>
-                <div className="settings-footer">
-                  <button
-                    type="button"
-                    className="settings-cancel"
-                    onClick={() => setProfileOpen(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="settings-save"
-                    onClick={() => void handleSaveProfile()}
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {searchOpen && (
-          <div
-            className="settings-overlay"
-            onClick={() => setSearchOpen(false)}
-          >
-            <div
-              className="settings-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="search-title"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="settings-modal-head">
-                <h2 id="search-title">Search chats</h2>
-                <button
-                  type="button"
-                  className="settings-close"
-                  onClick={() => setSearchOpen(false)}
-                  aria-label="Close search"
-                >
-                  ×
-                </button>
-              </div>
-              <div className="settings-body">
-                <input
-                  className="search-input"
-                  placeholder="Search by title…"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  autoFocus
-                />
-                <div className="search-results">
-                  {searchQueryLower && filteredReports.length === 0 ? (
-                    <p className="empty-history">
-                      No chats match “{searchQuery}”.
-                    </p>
-                  ) : (
-                    filteredReports.map((item) => (
-                      <button
-                        type="button"
-                        className="search-result"
-                        key={item.id}
-                        onClick={() => {
-                          setSearchOpen(false);
-                          setSearchQuery("");
-                          pushChatIdInUrl(item.id);
-                          openChatById(item.id);
-                        }}
+                    </button>
+                    <button
+                      type="button"
+                      ref={rightArrowRef}
+                      className="deck-arrow deck-arrow-right"
+                      aria-label="Next superlative"
+                      tabIndex={-1}
+                      onClick={() => goToSlide(slideIndex + 1, "right")}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                       >
-                        <strong>{item.title}</strong>
-                        <small>
-                          {item.message_count} messages ·{" "}
-                          {formatDate(item.created_at)}
-                        </small>
-                      </button>
-                    ))
-                  )}
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
+                    {!winnerRevealed && (
+                      <div ref={suspenseRef} className="winner-suspense">
+                        <div className="winner-skeleton">
+                          <div className="skeleton-bar skeleton-bar-lg" />
+                          <div className="skeleton-bar skeleton-bar-sm" />
+                          <div className="skeleton-bar skeleton-bar-md" />
+                        </div>
+                        <p className="winner-tease">Tap to reveal the winner</p>
+                      </div>
+                    )}
+                    {winnerRevealed && (
+                      <div ref={spotlightRef} className="winner-spotlight">
+                        <span className="winner-label">1ST PLACE</span>
+                        <h2
+                          ref={winnerNameRef}
+                          className={`winner-name${podiumRevealed ? " landing" : ""}${winnerSettled ? " settled" : ""}`}
+                        >
+                          {slide.winner.participant}
+                        </h2>
+                      </div>
+                    )}
+                    {podiumRevealed && (
+                      <div className="podium-section">
+                        <div className="podium">
+                          <div className="podium-bars">
+                            <div className="podium-bar-unit">
+                              <span className="podium-bar-name podium-name-silver">
+                                <img
+                                  src="/crown-silver.svg"
+                                  alt=""
+                                  className="podium-crown"
+                                />{" "}
+                                {slide.second.participant}
+                              </span>
+                              <div className="podium-bar podium-silver">
+                                <div className="podium-placement-circle podium-circle-silver">
+                                  2
+                                </div>
+                                <span className="podium-bar-outof">
+                                  out of {demoParticipants}
+                                </span>
+                                <span className="podium-bar-stat">
+                                  {demoPodiumPrimaryStat(
+                                    activeKey,
+                                    slide.second,
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="podium-bar-unit">
+                              <span className="podium-bar-name podium-name-gold">
+                                <img
+                                  src="/crown-gold.svg"
+                                  alt=""
+                                  className="podium-crown"
+                                />
+                                <span
+                                  ref={podiumFinalNameRef}
+                                  className={`podium-final-name${winnerSettled ? " visible" : ""}`}
+                                >
+                                  {slide.winner.participant}
+                                </span>
+                              </span>
+                              <div className="podium-bar podium-gold">
+                                <div className="podium-placement-circle podium-circle-gold">
+                                  1
+                                </div>
+                                <span className="podium-bar-outof">
+                                  out of {demoParticipants}
+                                </span>
+                                <span className="podium-bar-stat">
+                                  {demoPodiumPrimaryStat(
+                                    activeKey,
+                                    slide.winner,
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="podium-bar-unit">
+                              <span className="podium-bar-name podium-name-bronze">
+                                <img
+                                  src="/crown-bronze.svg"
+                                  alt=""
+                                  className="podium-crown"
+                                />{" "}
+                                {slide.third.participant}
+                              </span>
+                              <div className="podium-bar podium-bronze">
+                                <div className="podium-placement-circle podium-circle-bronze">
+                                  3
+                                </div>
+                                <span className="podium-bar-outof">
+                                  out of {demoParticipants}
+                                </span>
+                                <span className="podium-bar-stat">
+                                  {demoPodiumPrimaryStat(
+                                    activeKey,
+                                    slide.third,
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="podium-detail">
+                          {demoRankingDetail(activeKey, slide.winner)}
+                        </p>
+                        <div className="deck-action-row">
+                          <button
+                            type="button"
+                            ref={expandRef}
+                            className="expand-button"
+                            tabIndex={-1}
+                            onClick={() => setExpanded((v) => !v)}
+                          >
+                            {expanded
+                              ? "Hide full ranking"
+                              : `Expand ranking · ${demoParticipants} members`}
+                          </button>
+                        </div>
+                        {(expanded || closing) && (
+                          <div
+                            className={`ranking-collapse-wrapper${expanded ? " open" : ""}`}
+                          >
+                            <div className="ranking-collapse-inner">
+                              <div className="ranking-panel">
+                                <strong>Full ranking</strong>
+                                <ol>
+                                  {ranking.map((row, index) => (
+                                    <li
+                                      key={`${activeKey}-${row.participant}-${index}`}
+                                    >
+                                      <div>
+                                        <strong>
+                                          {`${index + 1}. ${row.participant}`}
+                                        </strong>
+                                        <span>
+                                          {demoRankingDetail(activeKey, row)}
+                                        </span>
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ol>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="deck-navigation">
+                <div className="deck-dots" aria-label="Superlative slides">
+                  {showcaseSlides.map((s, index) => (
+                    <button
+                      type="button"
+                      key={s.key}
+                      className={
+                        index === slideIndex
+                          ? "deck-dot active"
+                          : viewedSlides.has(index)
+                            ? "deck-dot viewed"
+                            : "deck-dot"
+                      }
+                      tabIndex={-1}
+                    />
+                  ))}
                 </div>
               </div>
             </div>
+
+            <p className="note">
+              A guided tour — each category reveals its winner and podium, plus
+              a full ranking. Try your own chat data with the big button above.
+            </p>
           </div>
-        )}
+        </div>
+        <div className="showcase-glow" aria-hidden="true" />
+      </motion.div>
+    </section>
+  );
+}
+
+function StatsBand() {
+  return (
+    <section className="landing-stats" aria-label="Highlights">
+      <motion.div
+        className="landing-stats-inner"
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.4 }}
+        variants={stagger}
+      >
+        {stats.map((stat) => (
+          <motion.div
+            variants={fadeUp}
+            className="landing-stat"
+            key={stat.label}
+          >
+            <Counter
+              value={stat.value}
+              decimals={stat.decimals}
+              suffix={stat.suffix}
+            />
+            <span className="landing-stat-label">{stat.label}</span>
+          </motion.div>
+        ))}
+      </motion.div>
+    </section>
+  );
+}
+
+function Marquee() {
+  const doubled = [...marqueeItems, ...marqueeItems];
+  return (
+    <div className="landing-marquee" aria-hidden="true">
+      <div className="landing-marquee-track">
+        {doubled.map((item, i) => (
+          <span className="landing-marquee-item" key={`${item.label}-${i}`}>
+            <span className="landing-marquee-emoji">{item.emoji}</span>
+            <span className="landing-marquee-label">{item.label}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HowItWorks() {
+  return (
+    <section id="how-it-works" className="landing-section landing-how">
+      <motion.div
+        className="landing-section-head"
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.5 }}
+        variants={stagger}
+      >
+        <motion.span variants={fadeUp} className="landing-kicker">
+          HOW IT WORKS
+        </motion.span>
+        <motion.h2 variants={fadeUp} className="landing-h2">
+          From export to epiphany
+        </motion.h2>
+        <motion.p variants={fadeUp} className="landing-h2-sub">
+          Three steps from your Messages app to the podium.
+        </motion.p>
+      </motion.div>
+
+      <div className="landing-timeline" aria-hidden="true" />
+
+      <motion.div
+        className="landing-steps"
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.25 }}
+        variants={stagger}
+      >
+        {steps.map((step) => (
+          <motion.article
+            key={step.title}
+            variants={fadeUp}
+            className="landing-step"
+          >
+            <span className="landing-step-chip">{step.num}</span>
+            <h3 className="landing-step-title">{step.title}</h3>
+            <p className="landing-step-body">{step.body}</p>
+          </motion.article>
+        ))}
+      </motion.div>
+    </section>
+  );
+}
+
+function Features() {
+  return (
+    <section id="features" className="landing-section landing-features">
+      <motion.div
+        className="landing-section-head"
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.5 }}
+        variants={stagger}
+      >
+        <motion.span variants={fadeUp} className="landing-kicker">
+          FEATURES
+        </motion.span>
+        <motion.h2 variants={fadeUp} className="landing-h2">
+          What you&apos;ll find out
+        </motion.h2>
+        <motion.p variants={fadeUp} className="landing-h2-sub">
+          Every metric is computed from your actual messages.
+        </motion.p>
+      </motion.div>
+
+      <motion.div
+        className="landing-feature-grid"
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.15 }}
+        variants={stagger}
+      >
+        {features.map((f) => (
+          <motion.article
+            key={f.title}
+            variants={fadeUp}
+            className="landing-feature"
+          >
+            <span
+              className="landing-feature-icon"
+              style={{
+                background: `linear-gradient(135deg, ${f.from}, ${f.to})`,
+                color: "#ffffff",
+              }}
+            >
+              <FeatureIcon name={f.icon} />
+            </span>
+            <h3 className="landing-feature-title">{f.title}</h3>
+            <p className="landing-feature-body">{f.body}</p>
+          </motion.article>
+        ))}
+      </motion.div>
+    </section>
+  );
+}
+
+function CTA() {
+  return (
+    <section className="landing-cta" aria-label="Get started">
+      <div className="landing-cta-glow" aria-hidden="true" />
+      <motion.div
+        className="landing-cta-inner"
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.4 }}
+        variants={stagger}
+      >
+        <motion.h2 variants={fadeUp} className="landing-h2">
+          Ready to see who really runs the chat?
+        </motion.h2>
+        <motion.p variants={fadeUp} className="landing-h2-sub">
+          It takes one file and about ten seconds.
+        </motion.p>
+        <motion.div variants={fadeUp} className="landing-cta-actions">
+          <MagneticButton
+            href="/app"
+            className="landing-btn-primary landing-btn-cta"
+            target="_blank"
+          >
+            Try Chat Stats
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M5 12h14" />
+              <path d="m13 6 6 6-6 6" />
+            </svg>
+          </MagneticButton>
+          <a
+            href="#how-it-works"
+            className="landing-btn-ghost landing-btn-ghost--dark"
+          >
+            Or catch up first
+          </a>
+        </motion.div>
+      </motion.div>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="landing-foot">
+      <div className="landing-foot-col landing-foot-brand-col">
+        <Link href="/" className="landing-brand">
+          <span className="landing-brand-mark">✦</span>
+          CHAT STATS
+        </Link>
+        <p className="landing-foot-tagline">
+          Analysis runs locally. Your conversations stay yours.
+        </p>
+      </div>
+      <div className="landing-foot-col">
+        <span className="landing-foot-heading">Product</span>
+        <Link
+          href="/app"
+          className="landing-foot-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Try Chat Stats
+        </Link>
+        <a href="#features" className="landing-foot-link">
+          Features
+        </a>
+        <a href="#how-it-works" className="landing-foot-link">
+          How it works
+        </a>
+      </div>
+      <div className="landing-foot-col">
+        <span className="landing-foot-heading">Insights</span>
+        <a href="#how-it-works" className="landing-foot-link">
+          Superlatives
+        </a>
+        <a href="#features" className="landing-foot-link">
+          The deck
+        </a>
+      </div>
+      <p className="landing-foot-copy">
+        © {new Date().getFullYear()} Chat Stats
+      </p>
+    </footer>
+  );
+}
+
+type LandingAuth = {
+  user: User | null;
+  loading: boolean;
+  signIn: () => void;
+  signOut: () => void;
+};
+
+function useLandingAuth(): LandingAuth {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false);
+      return;
+    }
+    const supabase = createClient();
+    let active = true;
+    setLoading(true);
+    void supabase.auth.getUser().then(({ data }) => {
+      if (!active) return;
+      setUser(data.user);
+      setLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      },
+    );
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  function signIn() {
+    if (!isSupabaseConfigured()) return;
+    void createClient().auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=/`,
+      },
+    });
+  }
+
+  async function signOut() {
+    if (isSupabaseConfigured()) {
+      await createClient().auth.signOut();
+    }
+    setUser(null);
+  }
+
+  return { user, loading, signIn, signOut };
+}
+
+export default function LandingPage() {
+  const { scrollRef, progress } = useContainerScroll();
+  const auth = useLandingAuth();
+
+  return (
+    <div className="landing" ref={scrollRef}>
+      <ScrollProgress progress={progress} />
+      <Nav progress={progress} auth={auth} />
+      <main className="landing-main">
+        <Hero />
+        <Showcase containerRef={scrollRef} />
+        <StatsBand />
+        <Marquee />
+        <HowItWorks />
+        <Features />
+        <CTA />
       </main>
+      <Footer />
     </div>
   );
 }

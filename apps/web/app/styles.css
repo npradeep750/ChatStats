@@ -55,6 +55,14 @@ body {
 .sidebar-tab.active {
   background: #60a8d3;
 }
+.new-chat-button {
+  background: #60a8d3;
+  color: #ffffff;
+}
+.new-chat-button:hover,
+.new-chat-button.active {
+  background: #78b9de;
+}
 .brand {
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -530,6 +538,20 @@ body {
   line-height: 0.98;
   letter-spacing: -0.06em;
   margin: 16px 0;
+}
+.new-chat-head {
+  max-width: 680px;
+  padding: 40px 44px 0;
+}
+.new-chat-head h2 {
+  font-size: clamp(26px, 4vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+  color: var(--ink);
+}
+.new-chat-head .lede {
+  font-size: 17px;
 }
 .lede {
   font-size: 20px;
