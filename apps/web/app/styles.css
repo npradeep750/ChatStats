@@ -1007,6 +1007,8 @@ h2 {
 }
 .deck-winner.podium .podium-section {
   opacity: 1;
+  position: relative;
+  z-index: 3;
 }
 .deck-winner.podium .winner-suspense {
   display: none;
@@ -1022,6 +1024,8 @@ h2 {
   justify-content: center;
   gap: 10px;
   height: 220px;
+  position: relative;
+  z-index: 3;
 }
 .podium-bar-unit {
   display: flex;
@@ -1074,7 +1078,7 @@ h2 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 4px;
   padding: 12px 6px;
   transform-origin: bottom;
@@ -1083,23 +1087,23 @@ h2 {
 }
 .podium-gold {
   height: 220px;
-  background-color: #ffffff;
+  background: linear-gradient(180deg, #f6e08a 0%, #edcf6b 48%, #d4af37 100%);
   border: 3px solid #d4af37;
-  color: #1a1a2e;
+  color: #3d2e07;
   animation-delay: 0.25s;
 }
 .podium-silver {
   height: 165px;
-  background-color: #ffffff;
+  background: linear-gradient(180deg, #f5f7fb 0%, #dde2ea 48%, #c0c5ce 100%);
   border: 3px solid #c0c0c0;
-  color: #1a1a2e;
+  color: #33404e;
   animation-delay: 0.1s;
 }
 .podium-bronze {
   height: 120px;
-  background-color: #ffffff;
+  background: linear-gradient(180deg, #f8dfc3 0%, #e5ab73 48%, #cd7f32 100%);
   border: 3px solid #cd7f32;
-  color: #1a1a2e;
+  color: #4a2a0f;
   animation-delay: 0.4s;
 }
 @keyframes barGrow {

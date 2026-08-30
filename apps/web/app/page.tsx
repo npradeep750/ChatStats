@@ -533,10 +533,11 @@ const stats = [
   { value: 14, decimals: 0, suffix: "", label: "Superlative titles" },
   { value: 100, decimals: 0, suffix: "%", label: "Analysis runs locally" },
   { value: 3, decimals: 0, suffix: "", label: "Chat formats supported" },
-  { value: 600, decimals: 0, suffix: "+", label: "IANA timezones" },
+  { value: 10, decimals: 0, suffix: "s", label: "To your first podium" },
 ];
 
 const navLinks = [
+  { label: "Demo", href: "#demo" },
   { label: "How it works", href: "#how-it-works" },
   { label: "Features", href: "#features" },
 ];
@@ -800,6 +801,202 @@ function Nav({
   );
 }
 
+type BackdropBubble = {
+  from: "in" | "out";
+  text: string;
+  contact: string;
+  time: string;
+  reactions?: string;
+  x: number;
+  y: number;
+  size: "sm" | "md" | "lg";
+  float: string;
+  delay: string;
+};
+
+const backdropBubbles: BackdropBubble[] = [
+  {
+    from: "out",
+    text: "are we still on for 7? one more person just said they're coming",
+    contact: "You",
+    time: "3:41 PM",
+    reactions: "❤️😂",
+    x: 4,
+    y: 16,
+    size: "lg",
+    float: "9s",
+    delay: "-1s",
+  },
+  {
+    from: "in",
+    text: "the group chat is literally on fire tonight 😂🔥",
+    contact: "Riley",
+    time: "3:42 PM",
+    x: 90,
+    y: 22,
+    size: "md",
+    float: "11s",
+    delay: "-4s",
+  },
+  {
+    from: "out",
+    text: "omg 💀💀💀",
+    contact: "You",
+    time: "3:43 PM",
+    reactions: "💀",
+    x: 8,
+    y: 40,
+    size: "sm",
+    float: "8s",
+    delay: "-2s",
+  },
+  {
+    from: "in",
+    text: "no way you said that in front of her",
+    contact: "Sam",
+    time: "9:12 PM",
+    x: 82,
+    y: 52,
+    size: "md",
+    float: "10s",
+    delay: "-6s",
+  },
+  {
+    from: "out",
+    text: "don't reply, she's wrong",
+    contact: "You",
+    time: "9:13 PM",
+    x: 5,
+    y: 62,
+    size: "sm",
+    float: "8.5s",
+    delay: "-3s",
+  },
+  {
+    from: "in",
+    text: "today's tally: 214 texts from Riley 💀",
+    contact: "Jordan",
+    time: "11:02 PM",
+    x: 90,
+    y: 74,
+    size: "sm",
+    float: "9s",
+    delay: "-5s",
+  },
+  {
+    from: "out",
+    text: "sending the ranking at 9 sharp",
+    contact: "You",
+    time: "8:58 PM",
+    x: 10,
+    y: 84,
+    size: "sm",
+    float: "10.5s",
+    delay: "-7s",
+  },
+  {
+    from: "in",
+    text: "someone please explain the emoji addiction",
+    contact: "Casey",
+    time: "8:59 PM",
+    x: 68,
+    y: 84,
+    size: "md",
+    float: "8s",
+    delay: "-2s",
+  },
+  {
+    from: "out",
+    text: "double text queen 👑",
+    contact: "You",
+    time: "9:01 PM",
+    reactions: "👑",
+    x: 26,
+    y: 6,
+    size: "sm",
+    float: "9s",
+    delay: "-4s",
+  },
+  {
+    from: "in",
+    text: "wait who texts at 3am?!",
+    contact: "Alex",
+    time: "3:07 AM",
+    reactions: "🌙",
+    x: 74,
+    y: 6,
+    size: "sm",
+    float: "11.5s",
+    delay: "-1s",
+  },
+  {
+    from: "out",
+    text: "bumping this thread again",
+    contact: "You",
+    time: "10:30 PM",
+    x: 36,
+    y: 4,
+    size: "sm",
+    float: "8.5s",
+    delay: "-3s",
+  },
+  {
+    from: "in",
+    text: "main character energy unlocked",
+    contact: "Taylor",
+    time: "10:31 PM",
+    x: 58,
+    y: 92,
+    size: "sm",
+    float: "8s",
+    delay: "-6s",
+  },
+  {
+    from: "in",
+    text: "ghosting y'all at 11 ✌️",
+    contact: "Jordan",
+    time: "10:59 PM",
+    reactions: "👻",
+    x: 44,
+    y: 96,
+    size: "sm",
+    float: "9s",
+    delay: "-2s",
+  },
+];
+
+function BackdropBubble({ bubble }: { bubble: BackdropBubble }) {
+  return (
+    <motion.div
+      className="chat-bubble-wrap"
+      data-size={bubble.size}
+      style={{ left: `${bubble.x}%`, top: `${bubble.y}%` }}
+      initial={false}
+      whileHover={{ scale: 1.2, zIndex: 6 }}
+      whileTap={{ scale: 0.96 }}
+      transition={{ type: "spring", stiffness: 320, damping: 20 }}
+      aria-hidden="true"
+    >
+      <div
+        className={`chat-bubble chat-bubble--${bubble.from}`}
+        style={{
+          animationDuration: bubble.float,
+          animationDelay: bubble.delay,
+        }}
+      >
+        <p className="chat-bubble-text">{bubble.text}</p>
+        <div className="chat-bubble-meta">
+          <span className="chat-bubble-contact">{bubble.contact}</span>
+          <span className="chat-bubble-time">{bubble.time}</span>
+        </div>
+        {bubble.reactions && (
+          <span className="chat-bubble-reactions">{bubble.reactions}</span>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
 function Hero() {
   const [typedText, setTypedText] = useState("");
 
@@ -817,10 +1014,14 @@ function Hero() {
 
   return (
     <section className="landing-hero" aria-label="Intro">
-      <div className="landing-blob landing-blob--1" aria-hidden="true" />
-      <div className="landing-blob landing-blob--2" aria-hidden="true" />
-      <div className="landing-blob landing-blob--3" aria-hidden="true" />
-      <div className="landing-dots" aria-hidden="true" />
+      <div className="landing-bubbles" aria-hidden="true">
+        {backdropBubbles.map((bubble) => (
+          <BackdropBubble
+            key={`${bubble.contact}-${bubble.time}-${bubble.text}`}
+            bubble={bubble}
+          />
+        ))}
+      </div>
 
       <motion.div
         className="landing-hero-inner"
@@ -986,32 +1187,36 @@ function Showcase({
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const behavior: ScrollBehavior = reduce ? "auto" : "smooth";
     const raf = requestAnimationFrame(() => {
-      const section = ref.current;
-      const cRect = container.getBoundingClientRect();
-      const sRect = section ? section.getBoundingClientRect() : null;
-      const start = sRect
-        ? sRect.top - cRect.top + container.scrollTop - 90
-        : 0;
-      const end = sRect && section ? start + section.offsetHeight : 0;
-      const current = container.scrollTop;
-      const inSection = current >= start && current <= end;
+      const el = expandRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const viewH = window.innerHeight;
+      const elVisible = rect.bottom > 0 && rect.top < viewH;
       if (expanded) {
-        restoreScrollRef.current = container.scrollTop;
-        const el = expandRef.current;
-        if (el && inSection) {
-          const top =
-            el.getBoundingClientRect().top +
-            container.scrollTop -
-            (reduce ? 90 : 140);
-          container.scrollTo({ top: Math.max(0, top), behavior });
+        if (elVisible) {
+          restoreScrollRef.current = container.scrollTop;
+          const panel = el.closest('.superlative-deck');
+          const panelBottom = panel
+            ? panel.getBoundingClientRect().bottom
+            : rect.bottom;
+          const needsScroll =
+            rect.top < 110 || panelBottom > viewH - 20;
+          if (needsScroll) {
+            const bottom =
+              panelBottom + container.scrollTop + 40;
+            container.scrollTo({
+              top: Math.max(0, bottom - viewH),
+              behavior,
+            });
+          }
+        } else {
+          restoreScrollRef.current = null;
         }
       } else if (restoreScrollRef.current != null) {
-        if (inSection) {
-          container.scrollTo({
-            top: restoreScrollRef.current,
-            behavior,
-          });
-        }
+        container.scrollTo({
+          top: restoreScrollRef.current,
+          behavior,
+        });
         restoreScrollRef.current = null;
       }
     });
@@ -1085,6 +1290,7 @@ function Showcase({
 
   return (
     <section
+      id="demo"
       className="landing-showcase"
       ref={ref}
       aria-label="Product preview"
@@ -1397,7 +1603,6 @@ function Showcase({
             </p>
           </div>
         </div>
-        <div className="showcase-glow" aria-hidden="true" />
       </motion.div>
     </section>
   );
@@ -1549,7 +1754,6 @@ function Features() {
 function CTA() {
   return (
     <section className="landing-cta" aria-label="Get started">
-      <div className="landing-cta-glow" aria-hidden="true" />
       <motion.div
         className="landing-cta-inner"
         initial="hidden"
