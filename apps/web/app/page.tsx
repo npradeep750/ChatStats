@@ -997,20 +997,46 @@ function BackdropBubble({ bubble }: { bubble: BackdropBubble }) {
   );
 }
 
+const HERO_REACTIONS = ["❤️", "😂", "👍", "👏", "🎉", "🔥", "💯", "⚡", "🥹", "😮"];
+
 function Hero() {
   const [typedText, setTypedText] = useState("");
+  const [phase, setPhase] = useState<"typing" | "sent" | "reacting">("typing");
+  const [emojiCount, setEmojiCount] = useState(0);
 
   useEffect(() => {
     const target = "Find out who really runs the group chat.";
     let i = 0;
     setTypedText("");
+    let sendTimer: number | undefined;
     const interval = setInterval(() => {
       i += 1;
       setTypedText(target.slice(0, i));
-      if (i >= target.length) clearInterval(interval);
+      if (i >= target.length) {
+        clearInterval(interval);
+        sendTimer = window.setTimeout(() => setPhase("sent"), 350);
+      }
     }, 55);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (sendTimer != null) window.clearTimeout(sendTimer);
+    };
   }, []);
+
+  useEffect(() => {
+    if (phase !== "sent") return;
+    const timer = window.setTimeout(() => setPhase("reacting"), 650);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "reacting") return;
+    if (emojiCount >= HERO_REACTIONS.length) return;
+    const timer = window.setTimeout(() => setEmojiCount((c) => c + 1), 180);
+    return () => window.clearTimeout(timer);
+  }, [phase, emojiCount]);
+
+  const typing = phase === "typing";
 
   return (
     <section className="landing-hero" aria-label="Intro">
@@ -1034,10 +1060,53 @@ function Hero() {
           GROUP CHAT ANALYTICS · iMESSAGE INSIGHTS
         </motion.p>
         <motion.h1 variants={fadeUp} className="landing-h1">
-          {typedText}
-          <span className="cursor" aria-hidden="true">
-            |
-          </span>
+          {typing ? (
+            <>
+              <span className="landing-h1-msg">{typedText}</span>
+              <span className="cursor" aria-hidden="true">
+                |
+              </span>
+            </>
+          ) : (
+            <motion.span
+              className="landing-h1-msg is-sent"
+              initial={{ scale: 0.62, opacity: 0 }}
+              animate={{
+                scale: 1,
+                opacity: 1,
+                transition: { type: "spring", stiffness: 300, damping: 17 },
+              }}
+            >
+              {typedText}
+              <span className="landing-sent-meta" aria-hidden="true">
+                ✓ Sent&nbsp;&nbsp;·&nbsp;&nbsp;now
+              </span>
+              {phase === "reacting" && emojiCount > 0 && (
+                <span className="landing-h1-reactions" aria-hidden="true">
+                  <span className="landing-h1-reaction">
+                    {HERO_REACTIONS.slice(0, emojiCount).map((e, i) => (
+                      <motion.span
+                        key={i}
+                        initial={{ y: 12, opacity: 0, scale: 0.5 }}
+                        animate={{
+                          y: 0,
+                          opacity: 1,
+                          scale: 1,
+                          transition: {
+                            type: "spring",
+                            stiffness: 500,
+                            damping: 16,
+                          },
+                        }}
+                      >
+                        {e}
+                      </motion.span>
+                    ))}
+                  </span>
+                </span>
+              )}
+            </motion.span>
+          )}
         </motion.h1>
         <motion.p variants={fadeUp} className="landing-sub">
           Upload an iMessage export and find unexpected superlatives.
@@ -1125,6 +1194,50 @@ function Showcase({
   const podiumFinalNameRef = useRef<HTMLSpanElement>(null);
 
   const slideIndexRef = useRef(0);
+  const [inView, setInView] = useState(false);
+  const [scrolledAway, setScrolledAway] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    const root = containerRef.current;
+    if (!el || !root) return;
+    function checkVisibility() {
+      const elRect = el!.getBoundingClientRect();
+      const rootRect = root!.getBoundingClientRect();
+      const overlapTop = Math.max(elRect.top, rootRect.top);
+      const overlapBottom = Math.min(elRect.bottom, rootRect.bottom);
+      const overlapHeight = Math.max(0, overlapBottom - overlapTop);
+      const visibleFraction = overlapHeight / elRect.height;
+      const anyVisible = visibleFraction >= 0.3;
+      // For the "scrolled away" reset, only trigger when the element is
+      // fully off-screen (top below container or bottom above container).
+      // This prevents the expand animation from triggering a false reset.
+      const fullyOffScreen =
+        elRect.top > rootRect.bottom || elRect.bottom < rootRect.top;
+      setInView(anyVisible);
+      setScrolledAway(fullyOffScreen);
+    }
+    checkVisibility();
+    root.addEventListener("scroll", checkVisibility, { passive: true });
+    window.addEventListener("resize", checkVisibility);
+    return () => {
+      root.removeEventListener("scroll", checkVisibility);
+      window.removeEventListener("resize", checkVisibility);
+    };
+  }, [containerRef]);
+
+  // Reset the demo when it scrolls completely out of view so it replays fresh.
+  useEffect(() => {
+    if (!scrolledAway) return;
+    setSlideIndex(0);
+    slideIndexRef.current = 0;
+    setSlideDirection("right");
+    setWinnerRevealed(false);
+    setPodiumRevealed(false);
+    setWinnerSettled(false);
+    setExpanded(false);
+    setClosing(false);
+  }, [scrolledAway]);
 
   function goToSlide(index: number, direction: "left" | "right") {
     const next = (index + N) % N;
@@ -1223,14 +1336,22 @@ function Showcase({
     return () => cancelAnimationFrame(raf);
   }, [expanded, containerRef]);
 
+  // Auto-play: starts once when inView first becomes true.
+  // Uses a ref for "stopped" so that inView flicker (from expand
+  // changing section height) doesn't kill the running async loop.
+  const autoPlayStartedRef = useRef(false);
+  const stoppedRef = useRef(false);
   useEffect(() => {
-    let stopped = false;
+    if (!inView) return;
+    if (autoPlayStartedRef.current) return;
+    autoPlayStartedRef.current = true;
+    stoppedRef.current = false;
     const sleep = (ms: number) =>
       new Promise<void>((resolve) => setTimeout(resolve, ms));
 
     async function until(test: () => boolean) {
       const start = Date.now();
-      while (!test() && !stopped) {
+      while (!test() && !stoppedRef.current) {
         if (Date.now() - start > 7000) return;
         await sleep(40);
       }
@@ -1243,7 +1364,7 @@ function Showcase({
 
     (async () => {
       await sleep(1400);
-      while (!stopped) {
+      while (!stoppedRef.current) {
         await until(() => Boolean(suspenseRef.current));
         await press(() => setWinnerRevealed(true));
 
@@ -1280,11 +1401,16 @@ function Showcase({
         await sleep(1800);
       }
     })();
+    // No cleanup — the loop is gated by autoPlayStartedRef and
+    // stoppedRef so it survives inView flicker.
+  }, [inView]);
 
-    return () => {
-      stopped = true;
-    };
-  }, []);
+  // Reset when scrolled fully away so it replays on next visit.
+  useEffect(() => {
+    if (!scrolledAway) return;
+    autoPlayStartedRef.current = false;
+    stoppedRef.current = true;
+  }, [scrolledAway]);
 
   const ranking = expanded || closing ? demoFullRanking(activeKey) : [];
 
