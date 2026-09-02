@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import {
   MotionValue,
-  animate,
   motion,
-  useInView,
   useMotionValueEvent,
   useScroll,
   useSpring,
@@ -31,6 +31,16 @@ const stagger = {
   show: { transition: { staggerChildren: 0.12, delayChildren: 0.1 } },
 };
 
+const superPop = {
+  hidden: { opacity: 0, scale: 0.6, y: 10 },
+  show: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: "spring" as const, stiffness: 320, damping: 22 },
+  },
+};
+
 const steps = [
   {
     num: "01",
@@ -49,50 +59,58 @@ const steps = [
   },
 ];
 
-const features = [
+const superlativeCategories = [
   {
-    icon: "crown",
-    title: "Unexpected superlatives",
-    body: "Who's really the group's main character? We measure reactions, not noise, to hand out titles worth arguing about.",
-    from: "#f6c56a",
-    to: "#c9822e",
-  },
-  {
-    icon: "bolt",
-    title: "Replies & reaction timing",
-    body: "Median reply times, quick-draw responders, how long the group takes to go quiet, and who breaks the silence.",
-    from: "#8fd3f7",
-    to: "#3b82c4",
-  },
-  {
-    icon: "moon",
-    title: "Activity patterns",
-    body: "Night owls, early birds, and conversation starters. See who's texting at 3 a.m. and who starts every thread.",
-    from: "#b7a6f5",
-    to: "#6d5ad6",
-  },
-  {
-    icon: "pen",
-    title: "Language & vocabulary",
-    body: "Longest messages, largest unique vocabularies, and the wordsmiths whose phrases the whole group picks up.",
-    from: "#ffd0e6",
-    to: "#e2709f",
-  },
-  {
-    icon: "shield",
-    title: "Grammar & style",
-    body: "Grammar police and punctuation perfectionists identified automatically, right down to the sentence level.",
-    from: "#9fe8c8",
-    to: "#3aa97c",
-  },
-  {
-    icon: "film",
-    title: "Cinematic reveals",
-    body: "Superlatives come alive in an animated, tab-friendly deck with dramatic reveals and a final podium.",
+    emblem: "timing",
     from: "#8fd3f7",
     to: "#155a8e",
+    title: "Group Activity",
+    blurb: "When and how often participants send messages.",
+    items: [
+      { label: "Night Owl", emoji: "🌙" },
+      { label: "Early Bird", emoji: "🐦" },
+      { label: "Time Traveler", emoji: "⏳" },
+      { label: "Quick Draw", emoji: "⚡" },
+    ],
   },
-];
+  {
+    emblem: "words",
+    from: "#ffd0e6",
+    to: "#e2709f",
+    title: "Message Data",
+    blurb: "The hidden patterns and trends in particiapant's messages.",
+    items: [
+      { label: "Wordsmith", emoji: "✍️" },
+      { label: "Novelist", emoji: "📚" },
+      { label: "Grammar Police", emoji: "🕵️" },
+    ],
+  },
+  {
+    emblem: "love",
+    from: "#ffd9a8",
+    to: "#e08a3c",
+    title: "Polarizing Figures",
+    blurb: "Who controls the conversation and who doesn't.",
+    items: [
+      { label: "Main Character", emoji: "👑" },
+      { label: "Conversation Starter", emoji: "💬" },
+      { label: "Trendsetter", emoji: "💅" },
+      { label: "Ghost", emoji: "👻" },
+    ],
+  },
+  {
+    emblem: "volume",
+    from: "#b7a6f5",
+    to: "#6d5ad6",
+    title: "Conversation Habits",
+    blurb: "How each participant interacts with the conversation.",
+    items: [
+      { label: "Media Spammer", emoji: "🎬" },
+      { label: "Emoji Addict", emoji: "😂" },
+      { label: "Double Texter", emoji: "📲" },
+    ],
+  },
+] as const;
 
 const marqueeItems = [
   { label: "Main Character", emoji: "👑" },
@@ -529,23 +547,18 @@ function demoFullRanking(key: string): DemoRow[] {
   return [...topThree, ...filler];
 }
 
-const stats = [
-  { value: 14, decimals: 0, suffix: "", label: "Superlative titles" },
-  { value: 100, decimals: 0, suffix: "%", label: "Analysis runs locally" },
-  { value: 3, decimals: 0, suffix: "", label: "Chat formats supported" },
-  { value: 10, decimals: 0, suffix: "s", label: "To your first podium" },
-];
-
 const navLinks = [
   { label: "Demo", href: "#demo" },
   { label: "How it works", href: "#how-it-works" },
-  { label: "Features", href: "#features" },
+  { label: "Superlatives", href: "#superlatives" },
 ];
 
-function FeatureIcon({ name }: { name: string }) {
+type EmblemKind = "timing" | "words" | "love" | "volume";
+
+function SuperEmblem({ kind }: { kind: EmblemKind }) {
   const common = {
-    width: 20,
-    height: 20,
+    width: 24,
+    height: 24,
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
@@ -553,49 +566,52 @@ function FeatureIcon({ name }: { name: string }) {
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
   };
-  switch (name) {
-    case "crown":
+
+  switch (kind) {
+    case "timing":
       return (
         <svg {...common}>
-          <path d="M3 17l2-9 5 3.5L12 5l2 6.5L19 8l2 9z" />
-          <path d="M3 20h18" />
+          <circle cx="12" cy="14" r="7" />
+          <rect x="10.5" y="3" width="3" height="2.5" rx="1" />
+          <rect x="9" y="2" width="6" height="2" rx="1" />
+          <line x1="12" y1="14" x2="12" y2="8" />
+          <circle cx="12" cy="14" r="1" fill="currentColor" stroke="none" />
+          <line x1="12" y1="8" x2="14" y2="10" />
         </svg>
       );
-    case "bolt":
+    case "words":
       return (
         <svg {...common}>
-          <polygon points="13 2 4 14 11 14 10 22 20 10 12 10 13 2" />
+          <path d="M16 2 L8 16 L12 12 L16 2Z" />
+          <path d="M8 16 L6 22 L12 12" />
+          <circle cx="7" cy="21" r="1.5" fill="currentColor" stroke="none" />
+          <line x1="18" y1="2" x2="20" y2="4" />
+          <line x1="20" y1="2" x2="18" y2="4" />
         </svg>
       );
-    case "moon":
+    case "love":
       return (
         <svg {...common}>
-          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+          <rect x="2" y="4" width="20" height="13" rx="4" />
+          <path d="M2 15 Q2 20 7 20 L9 17" />
+          <path
+            d="M12 15 C12 15 9 12.5 9 10.5 A1.8 1.8 0 0 1 12 9.8 A1.8 1.8 0 0 1 15 10.5 C15 12.5 12 15 12 15Z"
+            fill="currentColor"
+            stroke="none"
+          />
         </svg>
       );
-    case "pen":
+    case "volume":
       return (
         <svg {...common}>
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+          <rect x="3" y="10" width="4" height="10" rx="1.5" />
+          <rect x="10" y="5" width="4" height="15" rx="1.5" />
+          <rect x="17" y="2" width="4" height="18" rx="1.5" />
+          <circle cx="5" cy="7" r="1" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="4" r="1" fill="currentColor" stroke="none" />
+          <circle cx="19" cy="2" r="1" fill="currentColor" stroke="none" />
         </svg>
       );
-    case "shield":
-      return (
-        <svg {...common}>
-          <path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z" />
-          <path d="m9 12 2 2 4-4.5" />
-        </svg>
-      );
-    case "film":
-      return (
-        <svg {...common}>
-          <rect x="3" y="5" width="18" height="14" rx="2" />
-          <path d="M7 5v14M17 5v14M3 10h4M3 15h4M17 10h4M17 15h4" />
-        </svg>
-      );
-    default:
-      return null;
   }
 }
 
@@ -648,42 +664,6 @@ function MagneticButton({
     >
       {children}
     </motion.a>
-  );
-}
-
-function Counter({
-  value,
-  decimals,
-  suffix,
-}: {
-  value: number;
-  decimals: number;
-  suffix: string;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, amount: 0.6 });
-  const [display, setDisplay] = useState(0);
-
-  useEffect(() => {
-    if (!inView) return;
-    const controls = animate(0, value, {
-      duration: 1.8,
-      ease: EASE,
-      onUpdate: (v) => setDisplay(v),
-    });
-    return () => controls.stop();
-  }, [inView, value]);
-
-  const formatted =
-    decimals > 0
-      ? display.toFixed(decimals)
-      : Math.round(display).toLocaleString("en-US");
-
-  return (
-    <div ref={ref} className="landing-stat-value">
-      {formatted}
-      {suffix}
-    </div>
   );
 }
 
@@ -801,203 +781,132 @@ function Nav({
   );
 }
 
-type BackdropBubble = {
-  from: "in" | "out";
-  text: string;
-  contact: string;
+const HERO_REACTIONS = [
+  "❤️",
+  "😂",
+  "👍",
+  "👏",
+  "🎉",
+  "🔥",
+  "💯",
+  "⚡",
+  "🥹",
+  "😮",
+];
+
+const heroBubbles: Array<{
+  top: string;
+  left: string;
+  width: string;
+  variant: "in" | "out";
+  bars: string[];
+  name: string;
   time: string;
   reactions?: string;
-  x: number;
-  y: number;
-  size: "sm" | "md" | "lg";
-  float: string;
   delay: string;
-};
-
-const backdropBubbles: BackdropBubble[] = [
+  duration: string;
+}> = [
   {
-    from: "out",
-    text: "are we still on for 7? one more person just said they're coming",
-    contact: "You",
-    time: "3:41 PM",
-    reactions: "❤️😂",
-    x: 4,
-    y: 16,
-    size: "lg",
-    float: "9s",
-    delay: "-1s",
+    top: "13%",
+    left: "5%",
+    width: "150px",
+    variant: "out",
+    bars: ["82%", "52%"],
+    name: "44px",
+    time: "9:41",
+    reactions: "😂👍",
+    delay: "0s",
+    duration: "9s",
   },
   {
-    from: "in",
-    text: "the group chat is literally on fire tonight 😂🔥",
-    contact: "Riley",
-    time: "3:42 PM",
-    x: 90,
-    y: 22,
-    size: "md",
-    float: "11s",
-    delay: "-4s",
-  },
-  {
-    from: "out",
-    text: "omg 💀💀💀",
-    contact: "You",
-    time: "3:43 PM",
-    reactions: "💀",
-    x: 8,
-    y: 40,
-    size: "sm",
-    float: "8s",
-    delay: "-2s",
-  },
-  {
-    from: "in",
-    text: "no way you said that in front of her",
-    contact: "Sam",
-    time: "9:12 PM",
-    x: 82,
-    y: 52,
-    size: "md",
-    float: "10s",
-    delay: "-6s",
-  },
-  {
-    from: "out",
-    text: "don't reply, she's wrong",
-    contact: "You",
-    time: "9:13 PM",
-    x: 5,
-    y: 62,
-    size: "sm",
-    float: "8.5s",
+    top: "20%",
+    left: "79%",
+    width: "170px",
+    variant: "in",
+    bars: ["90%", "60%"],
+    name: "40px",
+    time: "9:42",
     delay: "-3s",
+    duration: "11s",
   },
   {
-    from: "in",
-    text: "today's tally: 214 texts from Riley 💀",
-    contact: "Jordan",
-    time: "11:02 PM",
-    x: 90,
-    y: 74,
-    size: "sm",
-    float: "9s",
+    top: "60%",
+    left: "2%",
+    width: "120px",
+    variant: "in",
+    bars: ["70%", "42%"],
+    name: "34px",
+    time: "9:47",
+    reactions: "❤️👍",
     delay: "-5s",
+    duration: "10s",
   },
   {
-    from: "out",
-    text: "sending the ranking at 9 sharp",
-    contact: "You",
-    time: "8:58 PM",
-    x: 10,
-    y: 84,
-    size: "sm",
-    float: "10.5s",
+    top: "72%",
+    left: "82%",
+    width: "160px",
+    variant: "out",
+    bars: ["84%", "50%"],
+    name: "42px",
+    time: "9:52",
     delay: "-7s",
+    duration: "12s",
   },
   {
-    from: "in",
-    text: "someone please explain the emoji addiction",
-    contact: "Casey",
-    time: "8:59 PM",
-    x: 68,
-    y: 84,
-    size: "md",
-    float: "8s",
+    top: "84%",
+    left: "17%",
+    width: "130px",
+    variant: "out",
+    bars: ["60%"],
+    name: "36px",
+    time: "9:55",
     delay: "-2s",
+    duration: "8.5s",
   },
   {
-    from: "out",
-    text: "double text queen 👑",
-    contact: "You",
-    time: "9:01 PM",
-    reactions: "👑",
-    x: 26,
-    y: 6,
-    size: "sm",
-    float: "9s",
-    delay: "-4s",
-  },
-  {
-    from: "in",
-    text: "wait who texts at 3am?!",
-    contact: "Alex",
-    time: "3:07 AM",
-    reactions: "🌙",
-    x: 74,
-    y: 6,
-    size: "sm",
-    float: "11.5s",
+    top: "9%",
+    left: "64%",
+    width: "110px",
+    variant: "in",
+    bars: ["64%", "40%"],
+    name: "30px",
+    time: "9:38",
+    reactions: "🔥",
     delay: "-1s",
-  },
-  {
-    from: "out",
-    text: "bumping this thread again",
-    contact: "You",
-    time: "10:30 PM",
-    x: 36,
-    y: 4,
-    size: "sm",
-    float: "8.5s",
-    delay: "-3s",
-  },
-  {
-    from: "in",
-    text: "main character energy unlocked",
-    contact: "Taylor",
-    time: "10:31 PM",
-    x: 58,
-    y: 92,
-    size: "sm",
-    float: "8s",
-    delay: "-6s",
-  },
-  {
-    from: "in",
-    text: "ghosting y'all at 11 ✌️",
-    contact: "Jordan",
-    time: "10:59 PM",
-    reactions: "👻",
-    x: 44,
-    y: 96,
-    size: "sm",
-    float: "9s",
-    delay: "-2s",
+    duration: "10.5s",
   },
 ];
 
-function BackdropBubble({ bubble }: { bubble: BackdropBubble }) {
+function HeroBubbles() {
   return (
-    <motion.div
-      className="chat-bubble-wrap"
-      data-size={bubble.size}
-      style={{ left: `${bubble.x}%`, top: `${bubble.y}%` }}
-      initial={false}
-      whileHover={{ scale: 1.2, zIndex: 6 }}
-      whileTap={{ scale: 0.96 }}
-      transition={{ type: "spring", stiffness: 320, damping: 20 }}
-      aria-hidden="true"
-    >
-      <div
-        className={`chat-bubble chat-bubble--${bubble.from}`}
-        style={{
-          animationDuration: bubble.float,
-          animationDelay: bubble.delay,
-        }}
-      >
-        <p className="chat-bubble-text">{bubble.text}</p>
-        <div className="chat-bubble-meta">
-          <span className="chat-bubble-contact">{bubble.contact}</span>
-          <span className="chat-bubble-time">{bubble.time}</span>
+    <div className="landing-bubbles" aria-hidden="true">
+      {heroBubbles.map((b, i) => (
+        <div
+          key={i}
+          className={`landing-bubble landing-bubble--${b.variant}`}
+          style={{
+            top: b.top,
+            left: b.left,
+            width: b.width,
+            animationDelay: b.delay,
+            animationDuration: b.duration,
+          }}
+        >
+          {b.bars.map((width, j) => (
+            <span key={j} className="landing-bubble-bar" style={{ width }} />
+          ))}
+          <span className="landing-bubble-meta">
+            <span className="landing-bubble-name" style={{ width: b.name }} />
+            <span className="landing-bubble-time">{b.time}</span>
+          </span>
+          {b.reactions && (
+            <span className="landing-bubble-reactions">{b.reactions}</span>
+          )}
         </div>
-        {bubble.reactions && (
-          <span className="chat-bubble-reactions">{bubble.reactions}</span>
-        )}
-      </div>
-    </motion.div>
+      ))}
+    </div>
   );
 }
-
-const HERO_REACTIONS = ["❤️", "😂", "👍", "👏", "🎉", "🔥", "💯", "⚡", "🥹", "😮"];
 
 function Hero() {
   const [typedText, setTypedText] = useState("");
@@ -1040,24 +949,20 @@ function Hero() {
 
   return (
     <section className="landing-hero" aria-label="Intro">
-      <div className="landing-bubbles" aria-hidden="true">
-        {backdropBubbles.map((bubble) => (
-          <BackdropBubble
-            key={`${bubble.contact}-${bubble.time}-${bubble.text}`}
-            bubble={bubble}
-          />
-        ))}
-      </div>
-
+      <HeroBubbles />
       <motion.div
         className="landing-hero-inner"
         initial="hidden"
         animate="show"
         variants={stagger}
       >
-        <motion.p variants={fadeUp} className="landing-eyebrow">
-          <span className="landing-eyebrow-dot" aria-hidden="true" />
-          GROUP CHAT ANALYTICS · iMESSAGE INSIGHTS
+        <motion.p variants={fadeUp} className="landing-hero-wordmark">
+          <img
+            src="/crown-gold.svg"
+            alt=""
+            className="landing-hero-wordmark-crown"
+          />
+          Chat <span>Stats</span>
         </motion.p>
         <motion.h1 variants={fadeUp} className="landing-h1">
           {typing ? (
@@ -1082,7 +987,10 @@ function Hero() {
                 ✓ Sent&nbsp;&nbsp;·&nbsp;&nbsp;now
               </span>
               {phase === "reacting" && emojiCount > 0 && (
-                <span className="landing-h1-reactions" aria-hidden="true">
+                <motion.span
+                  className="landing-h1-reactions"
+                  aria-hidden="true"
+                >
                   <span className="landing-h1-reaction">
                     {HERO_REACTIONS.slice(0, emojiCount).map((e, i) => (
                       <motion.span
@@ -1103,13 +1011,14 @@ function Hero() {
                       </motion.span>
                     ))}
                   </span>
-                </span>
+                </motion.span>
               )}
             </motion.span>
           )}
         </motion.h1>
         <motion.p variants={fadeUp} className="landing-sub">
-          Upload an iMessage export and find unexpected superlatives.
+          Turns your group chat into a highlight reel by crowning your
+          superlatives.
         </motion.p>
         <motion.div variants={fadeUp} className="landing-hero-actions">
           <MagneticButton
@@ -1137,19 +1046,12 @@ function Hero() {
             See how it works
           </a>
         </motion.div>
-      </motion.div>
-
-      <motion.div
-        className="landing-scroll-cue"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.8, duration: 0.8 }}
-        aria-hidden="true"
-      >
-        <span className="landing-scroll-mouse">
-          <span className="landing-scroll-wheel" />
-        </span>
-        <span>Scroll</span>
+        <motion.div variants={fadeUp} className="landing-hero-chips">
+          <span className="landing-hero-chip">🏆 14+ superlatives</span>
+          <span className="landing-hero-chip">⚡ Reply timing</span>
+          <span className="landing-hero-chip">🌙 Activity patterns</span>
+          <span className="landing-hero-chip">🔒 Stays in your browser</span>
+        </motion.div>
       </motion.div>
     </section>
   );
@@ -1274,7 +1176,7 @@ function Showcase({
     });
     const settle = window.setTimeout(() => {
       setWinnerSettled(true);
-    }, 1100);
+    }, 1900);
     return () => {
       cancelAnimationFrame(raf);
       window.clearTimeout(settle);
@@ -1308,15 +1210,13 @@ function Showcase({
       if (expanded) {
         if (elVisible) {
           restoreScrollRef.current = container.scrollTop;
-          const panel = el.closest('.superlative-deck');
+          const panel = el.closest(".superlative-deck");
           const panelBottom = panel
             ? panel.getBoundingClientRect().bottom
             : rect.bottom;
-          const needsScroll =
-            rect.top < 110 || panelBottom > viewH - 20;
+          const needsScroll = rect.top < 110 || panelBottom > viewH - 20;
           if (needsScroll) {
-            const bottom =
-              panelBottom + container.scrollTop + 40;
+            const bottom = panelBottom + container.scrollTop + 40;
             container.scrollTo({
               top: Math.max(0, bottom - viewH),
               behavior,
@@ -1352,7 +1252,7 @@ function Showcase({
     async function until(test: () => boolean) {
       const start = Date.now();
       while (!test() && !stoppedRef.current) {
-        if (Date.now() - start > 7000) return;
+        if (Date.now() - start > 12000) return;
         await sleep(40);
       }
     }
@@ -1363,16 +1263,16 @@ function Showcase({
     }
 
     (async () => {
-      await sleep(1400);
+      await sleep(1800);
       while (!stoppedRef.current) {
         await until(() => Boolean(suspenseRef.current));
         await press(() => setWinnerRevealed(true));
 
         await until(() => Boolean(spotlightRef.current));
-        await sleep(1300);
+        await sleep(2600);
         await press(() => setPodiumRevealed(true));
 
-        await sleep(1700);
+        await sleep(3400);
         const idx = slideIndexRef.current;
 
         if (idx === 1) {
@@ -1381,24 +1281,24 @@ function Showcase({
             setClosing(false);
             setExpanded(true);
           });
-          await sleep(2000);
+          await sleep(3800);
           await press(closeRankingRef.current);
-          await sleep(1500);
+          await sleep(2400);
         }
 
         if (idx === 2) {
           await sleep(500);
           await press(() => goToSlide(1, "left"));
           await until(() => Boolean(suspenseRef.current));
-          await sleep(1300);
+          await sleep(2400);
           await press(() => goToSlide(2, "right"));
           await until(() => Boolean(suspenseRef.current));
-          await sleep(1300);
+          await sleep(2400);
         }
 
         await press(() => goToSlide(slideIndexRef.current + 1, "right"));
         await until(() => Boolean(suspenseRef.current));
-        await sleep(1800);
+        await sleep(3000);
       }
     })();
     // No cleanup — the loop is gated by autoPlayStartedRef and
@@ -1734,35 +1634,6 @@ function Showcase({
   );
 }
 
-function StatsBand() {
-  return (
-    <section className="landing-stats" aria-label="Highlights">
-      <motion.div
-        className="landing-stats-inner"
-        initial="hidden"
-        whileInView="show"
-        viewport={{ once: true, amount: 0.4 }}
-        variants={stagger}
-      >
-        {stats.map((stat) => (
-          <motion.div
-            variants={fadeUp}
-            className="landing-stat"
-            key={stat.label}
-          >
-            <Counter
-              value={stat.value}
-              decimals={stat.decimals}
-              suffix={stat.suffix}
-            />
-            <span className="landing-stat-label">{stat.label}</span>
-          </motion.div>
-        ))}
-      </motion.div>
-    </section>
-  );
-}
-
 function Marquee() {
   const doubled = [...marqueeItems, ...marqueeItems];
   return (
@@ -1825,54 +1696,80 @@ function HowItWorks() {
   );
 }
 
-function Features() {
+function Superlatives() {
   return (
-    <section id="features" className="landing-section landing-features">
+    <section id="superlatives" className="landing-section landing-superlatives">
       <motion.div
         className="landing-section-head"
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, amount: 0.5 }}
+        viewport={{ once: true, amount: 0.4 }}
         variants={stagger}
       >
         <motion.span variants={fadeUp} className="landing-kicker">
-          FEATURES
+          THE SUPERLATIVES
         </motion.span>
         <motion.h2 variants={fadeUp} className="landing-h2">
-          What you&apos;ll find out
+          Oscar night for your group chat
         </motion.h2>
         <motion.p variants={fadeUp} className="landing-h2-sub">
-          Every metric is computed from your actual messages.
+          Fourteen titles, one conversation. Find your winners.
         </motion.p>
       </motion.div>
 
       <motion.div
-        className="landing-feature-grid"
+        className="landing-super-cats"
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, amount: 0.15 }}
+        viewport={{ once: true, amount: 0.18 }}
         variants={stagger}
       >
-        {features.map((f) => (
+        {superlativeCategories.map((c, i) => (
           <motion.article
-            key={f.title}
+            key={c.title}
             variants={fadeUp}
-            className="landing-feature"
+            className="landing-super-cat"
+            data-emblem={c.emblem}
+            style={
+              {
+                "--cat-a": c.from,
+                "--cat-b": c.to,
+              } as CSSProperties
+            }
           >
-            <span
-              className="landing-feature-icon"
-              style={{
-                background: `linear-gradient(135deg, ${f.from}, ${f.to})`,
-                color: "#ffffff",
-              }}
-            >
-              <FeatureIcon name={f.icon} />
+            <span className="landing-super-index">
+              {String(i + 1).padStart(2, "0")}
             </span>
-            <h3 className="landing-feature-title">{f.title}</h3>
-            <p className="landing-feature-body">{f.body}</p>
+            <div className="landing-super-top">
+              <span className="landing-super-medallion">
+                <SuperEmblem kind={c.emblem} />
+              </span>
+              <h3 className="landing-super-cat-title">{c.title}</h3>
+            </div>
+            <p className="landing-super-cat-blurb">{c.blurb}</p>
+            <motion.div
+              className="landing-super-cat-items"
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.55 }}
+              variants={stagger}
+            >
+              {c.items.map((item) => (
+                <motion.span
+                  key={item.label}
+                  variants={superPop}
+                  className="landing-super-chip"
+                >
+                  <span className="landing-super-emoji">{item.emoji}</span>
+                  {item.label}
+                </motion.span>
+              ))}
+            </motion.div>
           </motion.article>
         ))}
       </motion.div>
+
+      <Marquee />
     </section>
   );
 }
@@ -1949,8 +1846,8 @@ function Footer() {
         >
           Try Chat Stats
         </Link>
-        <a href="#features" className="landing-foot-link">
-          Features
+        <a href="#superlatives" className="landing-foot-link">
+          Superlatives
         </a>
         <a href="#how-it-works" className="landing-foot-link">
           How it works
@@ -1958,10 +1855,10 @@ function Footer() {
       </div>
       <div className="landing-foot-col">
         <span className="landing-foot-heading">Insights</span>
-        <a href="#how-it-works" className="landing-foot-link">
+        <a href="#superlatives" className="landing-foot-link">
           Superlatives
         </a>
-        <a href="#features" className="landing-foot-link">
+        <a href="#demo" className="landing-foot-link">
           The deck
         </a>
       </div>
@@ -2038,11 +1935,9 @@ export default function LandingPage() {
       <Nav progress={progress} auth={auth} />
       <main className="landing-main">
         <Hero />
-        <Showcase containerRef={scrollRef} />
-        <StatsBand />
-        <Marquee />
         <HowItWorks />
-        <Features />
+        <Showcase containerRef={scrollRef} />
+        <Superlatives />
         <CTA />
       </main>
       <Footer />
