@@ -78,7 +78,7 @@ const superlativeCategories = [
     from: "#ffd0e6",
     to: "#e2709f",
     title: "Message Data",
-    blurb: "The hidden patterns and trends in particiapant's messages.",
+    blurb: "The hidden patterns and trends in the group.",
     items: [
       { label: "Wordsmith", emoji: "✍️" },
       { label: "Novelist", emoji: "📚" },
@@ -456,6 +456,23 @@ const demoParticipants = 6;
 const showcaseSlides = ["main_character", "emoji_addict", "time_traveler"]
   .map((key) => demoSlides.find((s) => s.key === key))
   .filter((s): s is (typeof demoSlides)[number] => Boolean(s));
+
+const landingAnalyticsMembers = [
+  { name: "Riley", color: "#60a8d3", messages: 34, reactions: 39, emojis: 31 },
+  { name: "Sam", color: "#7567d8", messages: 23, reactions: 26, emojis: 24 },
+  { name: "Jordan", color: "#d4af37", messages: 17, reactions: 16, emojis: 18 },
+  { name: "Casey", color: "#cd7f32", messages: 12, reactions: 11, emojis: 13 },
+  { name: "Alex", color: "#5aa6a0", messages: 8, reactions: 5, emojis: 8 },
+  { name: "Taylor", color: "#d77fa8", messages: 6, reactions: 3, emojis: 6 },
+] as const;
+
+type LandingAnalyticsMetric = "messages" | "reactions" | "emojis";
+
+const landingAnalyticsMetricLabels: Record<LandingAnalyticsMetric, string> = {
+  messages: "Messages",
+  reactions: "Reactions",
+  emojis: "Emoji rate",
+};
 
 function demoPodiumPrimaryStat(key: string, row: DemoRow): string {
   if (key === "main_character")
@@ -1364,7 +1381,7 @@ function Showcase({
 
             <div className="deck-counter-row">
               <div className="deck-counter">
-                SUPERLATIVE {slideIndex + 1} OF {N}
+                SUPERLATIVE {slideIndex + 1} OF 15
               </div>
               <button
                 type="button"
@@ -1634,6 +1651,176 @@ function Showcase({
   );
 }
 
+function LandingAnalyticsPreview({
+  containerRef,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const [metric, setMetric] = useState<LandingAnalyticsMetric>("messages");
+  const maxValue = Math.max(
+    ...landingAnalyticsMembers.map((member) => member[metric]),
+  );
+  const donutStops = landingAnalyticsMembers
+    .reduce<{ stops: string[]; cursor: number }>(
+      (result, member) => {
+        const next = result.cursor + member[metric];
+        result.stops.push(`${member.color} ${result.cursor}% ${next}%`);
+        result.cursor = next;
+        return result;
+      },
+      { stops: [], cursor: 0 },
+    )
+    .stops.join(", ");
+
+  return (
+    <section
+      className="landing-analytics-preview"
+      aria-labelledby="landing-analytics-heading"
+    >
+      <motion.div
+        className="landing-section-head"
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, amount: 0.35, root: containerRef }}
+        variants={stagger}
+      >
+        <motion.span variants={fadeUp} className="landing-kicker">
+          INSIDE THE REPORT
+        </motion.span>
+        <motion.h2
+          variants={fadeUp}
+          className="landing-h2"
+          id="landing-analytics-heading"
+        >
+          See the story behind the crowns
+        </motion.h2>
+        <motion.p variants={fadeUp} className="landing-h2-sub">
+          Reveals how each participant stacks up against each other.
+        </motion.p>
+      </motion.div>
+
+      <motion.div
+        className="landing-analytics-console"
+        initial={{ opacity: 0, y: 30, scale: 0.98 }}
+        whileInView={{ opacity: 1, y: 0, scale: 1 }}
+        viewport={{ once: true, amount: 0.2, root: containerRef }}
+        transition={{ duration: 0.8, ease: EASE }}
+      >
+        <div className="landing-analytics-console-top">
+          <div>
+            <span className="landing-analytics-overline">
+              THE DINNER CREW · 6 MEMBERS
+            </span>
+            <h3>Conversation share</h3>
+          </div>
+          <div
+            className="landing-analytics-switcher"
+            role="group"
+            aria-label="Preview analytics metric"
+          >
+            {(
+              Object.keys(
+                landingAnalyticsMetricLabels,
+              ) as LandingAnalyticsMetric[]
+            ).map((option) => (
+              <button
+                type="button"
+                key={option}
+                className={metric === option ? "active" : ""}
+                onClick={() => setMetric(option)}
+              >
+                {landingAnalyticsMetricLabels[option]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="landing-analytics-visuals">
+          <div className="landing-donut-panel">
+            <div
+              className="landing-donut"
+              style={{ background: `conic-gradient(${donutStops})` }}
+              aria-label={`${landingAnalyticsMetricLabels[metric]} distribution across all six members`}
+              role="img"
+            >
+              <span>
+                <strong>100%</strong>
+                <small>the whole chat</small>
+              </span>
+            </div>
+            <div className="landing-donut-legend">
+              {landingAnalyticsMembers.map((member) => (
+                <div className="landing-legend-item" key={member.name}>
+                  <span
+                    className="landing-legend-dot"
+                    style={{ background: member.color }}
+                  />
+                  <span>{member.name}</span>
+                  <strong>{member[metric]}%</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="landing-bars-panel">
+            <div
+              className="landing-bars-grid"
+              aria-label={`${landingAnalyticsMetricLabels[metric]} comparison`}
+            >
+              {landingAnalyticsMembers.map((member, index) => (
+                <motion.div
+                  key={`${metric}-${member.name}`}
+                  className="landing-bar-row"
+                  initial={{ opacity: 0, x: 18 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true, amount: 0.3, root: containerRef }}
+                  transition={{
+                    delay: index * 0.06,
+                    duration: 0.45,
+                    ease: EASE,
+                  }}
+                >
+                  <div className="landing-bar-label">
+                    <span
+                      className="landing-legend-dot"
+                      style={{ background: member.color }}
+                    />
+                    <span>{member.name}</span>
+                    <strong>{member[metric]}%</strong>
+                  </div>
+                  <div className="landing-bar-track">
+                    <motion.span
+                      className="landing-bar-fill"
+                      style={{
+                        background: `linear-gradient(90deg, ${member.color}, ${member.color}99)`,
+                      }}
+                      initial={{ width: 0 }}
+                      whileInView={{
+                        width: `${(member[metric] / maxValue) * 100}%`,
+                      }}
+                      viewport={{ once: true, amount: 0.3, root: containerRef }}
+                      transition={{
+                        delay: 0.15 + index * 0.06,
+                        duration: 0.75,
+                        ease: EASE,
+                      }}
+                    />
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+            <p className="landing-analytics-caption">
+              {metric === "messages" &&
+                "Participation share from eligible messages."}
+              {metric === "reactions" && "Share of native reactions received."}
+              {metric === "emojis" &&
+                "Emoji usage normalized per 100 messages."}
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    </section>
+  );
+}
+
 function Marquee() {
   const doubled = [...marqueeItems, ...marqueeItems];
   return (
@@ -1650,14 +1837,18 @@ function Marquee() {
   );
 }
 
-function HowItWorks() {
+function HowItWorks({
+  containerRef,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
   return (
     <section id="how-it-works" className="landing-section landing-how">
       <motion.div
         className="landing-section-head"
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, amount: 0.5 }}
+        viewport={{ once: true, amount: 0.5, root: containerRef }}
         variants={stagger}
       >
         <motion.span variants={fadeUp} className="landing-kicker">
@@ -1677,7 +1868,7 @@ function HowItWorks() {
         className="landing-steps"
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, amount: 0.25 }}
+        viewport={{ once: true, amount: 0.25, root: containerRef }}
         variants={stagger}
       >
         {steps.map((step) => (
@@ -1696,14 +1887,18 @@ function HowItWorks() {
   );
 }
 
-function Superlatives() {
+function Superlatives({
+  containerRef,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
   return (
     <section id="superlatives" className="landing-section landing-superlatives">
       <motion.div
         className="landing-section-head"
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, amount: 0.4 }}
+        viewport={{ once: true, amount: 0.4, root: containerRef }}
         variants={stagger}
       >
         <motion.span variants={fadeUp} className="landing-kicker">
@@ -1721,7 +1916,7 @@ function Superlatives() {
         className="landing-super-cats"
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, amount: 0.18 }}
+        viewport={{ once: true, amount: 0.18, root: containerRef }}
         variants={stagger}
       >
         {superlativeCategories.map((c, i) => (
@@ -1751,7 +1946,7 @@ function Superlatives() {
               className="landing-super-cat-items"
               initial="hidden"
               whileInView="show"
-              viewport={{ once: true, amount: 0.55 }}
+              viewport={{ once: true, amount: 0.55, root: containerRef }}
               variants={stagger}
             >
               {c.items.map((item) => (
@@ -1774,14 +1969,18 @@ function Superlatives() {
   );
 }
 
-function CTA() {
+function CTA({
+  containerRef,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
   return (
     <section className="landing-cta" aria-label="Get started">
       <motion.div
         className="landing-cta-inner"
         initial="hidden"
         whileInView="show"
-        viewport={{ once: true, amount: 0.4 }}
+        viewport={{ once: true, amount: 0.4, root: containerRef }}
         variants={stagger}
       >
         <motion.h2 variants={fadeUp} className="landing-h2">
@@ -1935,10 +2134,11 @@ export default function LandingPage() {
       <Nav progress={progress} auth={auth} />
       <main className="landing-main">
         <Hero />
-        <HowItWorks />
+        <HowItWorks containerRef={scrollRef} />
         <Showcase containerRef={scrollRef} />
-        <Superlatives />
-        <CTA />
+        <LandingAnalyticsPreview containerRef={scrollRef} />
+        <Superlatives containerRef={scrollRef} />
+        <CTA containerRef={scrollRef} />
       </main>
       <Footer />
     </div>

@@ -3,6 +3,18 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
+  Bar,
+  BarChart,
+  Cell,
+  CartesianGrid,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   createClient,
   getProfileFromSupabase,
   isSupabaseConfigured,
@@ -534,6 +546,687 @@ function podiumPrimaryStat(key: string, row: Ranking): string {
 function podiumPlacement(index: number, total: number): string {
   const ordinals = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"];
   return `${ordinals[index] ?? `${index + 1}th`} of ${total}`;
+}
+
+type ChartDatum = {
+  participant: string;
+  participantId?: string;
+  value: number;
+};
+
+const chartColors = {
+  blue: "#60a8d3",
+  purple: "#7567d8",
+  gold: "#d4af37",
+  orange: "#cd7f32",
+};
+
+function chartData(
+  report: Report,
+  key: string,
+  field: keyof Ranking,
+  multiplier = 1,
+): ChartDatum[] {
+  const rows = leaderboardRows(report, key);
+  const byParticipantId = new Map(
+    rows
+      .filter((row) => row.participant_id)
+      .map((row) => [row.participant_id as string, row]),
+  );
+  const byParticipantName = new Map(
+    rows.map((row) => [row.participant.toLowerCase(), row]),
+  );
+  const roster = report.participants ?? [];
+  const data = roster.length
+    ? roster.map((person) => {
+        const row =
+          byParticipantId.get(person.participant_id) ??
+          byParticipantName.get(person.display_name.toLowerCase());
+        return {
+          participant: firstNameOf(person.display_name),
+          participantId: person.participant_id,
+          value: Number(row?.[field] ?? 0) * multiplier,
+        };
+      })
+    : rows.map((row) => ({
+        participant: firstNameOf(row.participant),
+        participantId: row.participant_id,
+        value: Number(row[field] ?? 0) * multiplier,
+      }));
+  return data
+    .filter((row) => Number.isFinite(row.value))
+    .sort((left, right) => right.value - left.value);
+}
+
+const participantPalette = [
+  "#60a8d3",
+  "#7567d8",
+  "#d4af37",
+  "#cd7f32",
+  "#5aa6a0",
+  "#d77fa8",
+  "#8b9bd0",
+  "#a875c9",
+  "#6f8c62",
+  "#c45d5d",
+];
+
+function AnalyticsBarChart({
+  data,
+  color,
+  unit,
+}: {
+  data: ChartDatum[];
+  color: string;
+  unit: string;
+}) {
+  if (data.length === 0) {
+    return <p className="analytics-empty">No data available for this view.</p>;
+  }
+  const height = Math.max(250, data.length * 34 + 32);
+  return (
+    <div
+      className="analytics-chart"
+      role="img"
+      aria-label={`Bar chart showing ${unit}`}
+    >
+      <ResponsiveContainer width="100%" height={height}>
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 4, right: 18, left: 4, bottom: 4 }}
+        >
+          <CartesianGrid stroke="#d7e5f0" horizontal={false} />
+          <XAxis
+            type="number"
+            allowDecimals
+            tick={{ fill: "#4c5f78", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            type="category"
+            dataKey="participant"
+            width={74}
+            tick={{ fill: "#1a1a2e", fontSize: 12, fontWeight: 700 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip
+            cursor={{ fill: "rgba(96, 168, 211, 0.08)" }}
+            contentStyle={{
+              border: "1px solid #d7e5f0",
+              borderRadius: 10,
+              boxShadow: "0 10px 24px rgba(17, 73, 124, 0.12)",
+              fontSize: 12,
+            }}
+            formatter={(value) => [String(value), unit]}
+          />
+          <Bar
+            dataKey="value"
+            fill={color}
+            radius={[0, 8, 8, 0]}
+            barSize={18}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function AnalyticsDonutChart({
+  data,
+  unit,
+}: {
+  data: ChartDatum[];
+  unit: string;
+}) {
+  const positiveData = data.filter((entry) => entry.value > 0);
+  if (positiveData.length === 0) {
+    return (
+      <p className="analytics-empty">No data available for this view yet.</p>
+    );
+  }
+  const total = positiveData.reduce((sum, entry) => sum + entry.value, 0);
+  const colorFor = (entry: ChartDatum) => {
+    const index = data.indexOf(entry);
+    return participantPalette[
+      (index < 0 ? 0 : index) % participantPalette.length
+    ];
+  };
+  return (
+    <div
+      className="analytics-donut-wrap"
+      role="img"
+      aria-label={`Donut chart showing ${unit}`}
+    >
+      <ResponsiveContainer width="100%" height={286}>
+        <PieChart>
+          <Pie
+            data={positiveData}
+            dataKey="value"
+            nameKey="participant"
+            cx="50%"
+            cy="46%"
+            innerRadius={58}
+            outerRadius={94}
+            paddingAngle={3}
+            cornerRadius={5}
+            stroke="#ffffff"
+            strokeWidth={2}
+          >
+            {positiveData.map((entry, index) => (
+              <Cell
+                key={`${entry.participantId ?? entry.participant}-${index}`}
+                fill={colorFor(entry)}
+              />
+            ))}
+          </Pie>
+          <Tooltip
+            contentStyle={{
+              border: "1px solid #d7e5f0",
+              borderRadius: 10,
+              boxShadow: "0 10px 24px rgba(17, 73, 124, 0.12)",
+              fontSize: 12,
+            }}
+            formatter={(value) => [String(value), unit]}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+      <div
+        className="analytics-donut-member-list"
+        aria-label="All participants in this chart"
+      >
+        {data.map((entry, index) => (
+          <span key={`${entry.participantId ?? entry.participant}-${index}`}>
+            <i style={{ background: colorFor(entry) }} />
+            <span className="analytics-donut-member-name">
+              {entry.participant}
+            </span>
+            <strong>
+              {total ? `${((entry.value / total) * 100).toFixed(1)}%` : "0%"}
+            </strong>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <article className="analytics-card">
+      <div className="analytics-card-heading">
+        <h3>{title}</h3>
+        <span aria-hidden="true">↗</span>
+      </div>
+      <p>{description}</p>
+      {children}
+    </article>
+  );
+}
+
+type SummaryItem = {
+  key: string;
+  label: string;
+  winner: string;
+  stat: string;
+};
+
+function reportSummaryItems(report: Report): SummaryItem[] {
+  return Object.entries(report.titles)
+    .filter(([, winner]) => winner)
+    .map(([key, winner]) => ({
+      key,
+      label: titleLabels[key] ?? key,
+      winner: firstNameOf(winner?.participant ?? "—"),
+      stat: winner ? podiumPrimaryStat(key, winner) : "No winner",
+    }));
+}
+
+function FinalResultsSlide({
+  report,
+  onPrevious,
+}: {
+  report: Report;
+  onPrevious: () => void;
+}) {
+  const summaryItems = reportSummaryItems(report);
+  return (
+    <div className="final-results-slide">
+      <button
+        type="button"
+        className="deck-arrow deck-arrow-left"
+        aria-label="Return to the last superlative"
+        onClick={onPrevious}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+      <div className="final-results-heading">
+        <span className="analytics-eyebrow">FINAL RESULTS</span>
+        <h2>Everyone has a title</h2>
+        <p>
+          {summaryItems.length} crowns from{" "}
+          <strong>{report.conversation_summary.title}</strong>. Here’s the whole
+          chat in one view.
+        </p>
+      </div>
+      {summaryItems.length > 0 ? (
+        <div className="final-results-grid">
+          {summaryItems.map((item, index) => (
+            <article className="final-result-card" key={item.key}>
+              <span className="final-result-index">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <div>
+                <span>{item.label.replace(/^The /, "")}</span>
+                <strong>{item.winner}</strong>
+                <small>{item.stat}</small>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="analytics-empty">
+          No superlatives had enough data to crown.
+        </p>
+      )}
+      <p className="final-results-footnote">
+        Based on the selected conversation ·{" "}
+        {report.conversation_summary.message_count.toLocaleString()} messages ·{" "}
+        {report.conversation_summary.participant_count} participants
+      </p>
+    </div>
+  );
+}
+
+function ReportAnalytics({
+  report,
+  activeKey,
+  deckComplete,
+}: {
+  report: Report;
+  activeKey?: string;
+  deckComplete: boolean;
+}) {
+  const focusKey = activeKey ?? "main_character";
+  const messageData = chartData(report, "ghost", "message_count");
+  const reactionScoreData = chartData(
+    report,
+    "main_character",
+    "ranking_score",
+  );
+  const reactionVolumeData = chartData(
+    report,
+    "main_character",
+    "total_reactions",
+  );
+  const emojiData = chartData(report, "emoji_addict", "per_100_messages");
+  const mediaData = chartData(report, "media_spammer", "per_100_messages");
+  const startData = chartData(
+    report,
+    "conversation_starter",
+    "starts_per_100_messages",
+  );
+  const lateReturnData = chartData(report, "time_traveler", "late_reply_count");
+  const replyTimeData = chartData(
+    report,
+    "quick_draw",
+    "median_reply_seconds",
+  ).filter((row) => row.value > 0);
+  const nightData = chartData(report, "night_owl", "share", 100);
+  const earlyData = chartData(report, "early_bird", "share", 100);
+  const doubleTextData = chartData(report, "double_texter", "rate");
+  const novelistData = chartData(report, "novelist", "average_words");
+  const grammarData = chartData(report, "grammar_police", "grammar_score");
+  const vocabularyData = chartData(report, "wordsmith", "unique_words");
+  const trendData = chartData(report, "trendsetter", "first_use_terms");
+  const focusCharts: Record<
+    string,
+    {
+      title: string;
+      description: string;
+      data: ChartDatum[];
+      unit: string;
+      color: string;
+      donut?: boolean;
+    }
+  > = {
+    main_character: {
+      title: "Reaction impact",
+      description:
+        "How the group’s native reactions are distributed across every member.",
+      data: reactionVolumeData,
+      unit: "reactions",
+      color: chartColors.gold,
+      donut: true,
+    },
+    emoji_addict: {
+      title: "Emoji energy",
+      description: "Emoji usage normalized to every 100 messages.",
+      data: emojiData,
+      unit: "emojis per 100 messages",
+      color: chartColors.purple,
+    },
+    media_spammer: {
+      title: "Media pulse",
+      description: "Photos, videos, files, and links per 100 messages.",
+      data: mediaData,
+      unit: "media items per 100 messages",
+      color: chartColors.orange,
+    },
+    quick_draw: {
+      title: "Reply speed",
+      description: "Median reply time after a message was sent.",
+      data: replyTimeData,
+      unit: "median seconds",
+      color: chartColors.purple,
+    },
+    night_owl: {
+      title: "Night activity",
+      description:
+        "Share of each member’s messages sent between midnight and 6 a.m.",
+      data: nightData,
+      unit: "percent of messages",
+      color: chartColors.purple,
+    },
+    early_bird: {
+      title: "Morning activity",
+      description: "Share of each member’s messages sent between 6 and 9 a.m.",
+      data: earlyData,
+      unit: "percent of messages",
+      color: chartColors.blue,
+    },
+    conversation_starter: {
+      title: "Conversation starts",
+      description: "New threads opened after four or more hours of silence.",
+      data: startData,
+      unit: "starts per 100 messages",
+      color: chartColors.blue,
+    },
+    time_traveler: {
+      title: "Late returns",
+      description: "Replies or conversation returns after four or more hours.",
+      data: lateReturnData,
+      unit: "late returns",
+      color: chartColors.gold,
+    },
+    ghost: {
+      title: "Participation",
+      description: "Eligible messages sent by every participant.",
+      data: messageData,
+      unit: "messages",
+      color: chartColors.blue,
+      donut: true,
+    },
+    double_texter: {
+      title: "Double-text energy",
+      description: "Share of each member’s messages sent in consecutive runs.",
+      data: doubleTextData,
+      unit: "double-text rate",
+      color: chartColors.blue,
+    },
+    novelist: {
+      title: "Message length",
+      description: "Average words in each member’s eligible text messages.",
+      data: novelistData,
+      unit: "average words",
+      color: chartColors.purple,
+    },
+    grammar_police: {
+      title: "Writing style",
+      description:
+        "Grammar score built from punctuation, capitalization, and formal markers.",
+      data: grammarData,
+      unit: "grammar score",
+      color: chartColors.gold,
+    },
+    wordsmith: {
+      title: "Vocabulary",
+      description: "Unique vocabulary used in the selected conversation.",
+      data: vocabularyData,
+      unit: "unique words",
+      color: chartColors.orange,
+    },
+    trendsetter: {
+      title: "Words that spread",
+      description: "Words introduced by a member and later adopted by others.",
+      data: trendData,
+      unit: "adopted words",
+      color: chartColors.purple,
+    },
+  };
+  const focus = focusCharts[focusKey] ?? focusCharts.main_character;
+  if (deckComplete) return null;
+
+  return (
+    <section className="analytics-suite" aria-labelledby="analytics-heading">
+      <div className="analytics-suite-heading">
+        <div>
+          <span className="analytics-eyebrow">REPORT SIGNALS</span>
+          <h2 id="analytics-heading">The patterns behind the podium</h2>
+          <span className="analytics-focus-label">
+            Now exploring: {titleLabels[focusKey] ?? "the selected superlative"}
+          </span>
+        </div>
+        <p>The chart follows the superlative currently on screen.</p>
+      </div>
+      <div className="analytics-focus-grid">
+        <AnalyticsCard
+          key={focusKey}
+          title={focus.title}
+          description={focus.description}
+        >
+          {focus.donut ? (
+            <AnalyticsDonutChart data={focus.data} unit={focus.unit} />
+          ) : (
+            <AnalyticsBarChart
+              data={focus.data}
+              color={focus.color}
+              unit={focus.unit}
+            />
+          )}
+        </AnalyticsCard>
+      </div>
+      <div className="analytics-featured-grid">
+        <AnalyticsCard
+          title="Who owns the conversation?"
+          description="Share of all eligible messages in the selected group chat."
+        >
+          <AnalyticsDonutChart data={messageData} unit="messages" />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Who gets the love?"
+          description="The reaction volume behind the Main Character ranking."
+        >
+          <AnalyticsDonutChart data={reactionVolumeData} unit="reactions" />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Emoji fingerprint"
+          description="How the group’s emoji usage is distributed."
+        >
+          <AnalyticsDonutChart
+            data={emojiData}
+            unit="emojis per 100 messages"
+          />
+        </AnalyticsCard>
+      </div>
+      <div className="analytics-grid">
+        <AnalyticsCard
+          title="Participation"
+          description="Eligible messages sent by participant."
+        >
+          <AnalyticsBarChart
+            data={messageData}
+            color={chartColors.blue}
+            unit="messages"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Reaction impact"
+          description="Main Character score, blending reaction intensity and volume."
+        >
+          <AnalyticsBarChart
+            data={reactionScoreData}
+            color={chartColors.gold}
+            unit="score"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Reaction volume"
+          description="Total native reactions received by each participant."
+        >
+          <AnalyticsBarChart
+            data={reactionVolumeData}
+            color={chartColors.orange}
+            unit="reactions"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Emoji energy"
+          description="Emoji usage normalized to every 100 messages."
+        >
+          <AnalyticsBarChart
+            data={emojiData}
+            color={chartColors.purple}
+            unit="emojis per 100 messages"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Media pulse"
+          description="Photos, videos, files, and links per 100 messages."
+        >
+          <AnalyticsBarChart
+            data={mediaData}
+            color={chartColors.orange}
+            unit="media items per 100 messages"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Conversation starts"
+          description="New threads opened after four or more hours of silence."
+        >
+          <AnalyticsBarChart
+            data={startData}
+            color={chartColors.blue}
+            unit="starts per 100 messages"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Reply speed"
+          description="Median reply time when a comparable reply was detected."
+        >
+          <AnalyticsBarChart
+            data={replyTimeData}
+            color={chartColors.purple}
+            unit="median seconds"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Late returns"
+          description="Replies or conversation returns after four or more hours."
+        >
+          <AnalyticsBarChart
+            data={lateReturnData}
+            color={chartColors.gold}
+            unit="late returns"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Activity windows"
+          description="Share of each participant’s messages sent in early or late hours."
+        >
+          <div className="analytics-dual-chart">
+            <div>
+              <strong>Night Owl</strong>
+              <AnalyticsBarChart
+                data={nightData}
+                color={chartColors.purple}
+                unit="percent of messages"
+              />
+            </div>
+            <div>
+              <strong>Early Bird</strong>
+              <AnalyticsBarChart
+                data={earlyData}
+                color={chartColors.blue}
+                unit="percent of messages"
+              />
+            </div>
+          </div>
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Double-text energy"
+          description="Share of each participant’s messages sent in consecutive runs."
+        >
+          <AnalyticsBarChart
+            data={doubleTextData}
+            color={chartColors.blue}
+            unit="double-text rate"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Message length"
+          description="Average words in each participant’s eligible text messages."
+        >
+          <AnalyticsBarChart
+            data={novelistData}
+            color={chartColors.purple}
+            unit="average words"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Writing style"
+          description="Grammar score built from punctuation, capitalization, and formal markers."
+        >
+          <AnalyticsBarChart
+            data={grammarData}
+            color={chartColors.gold}
+            unit="grammar score"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Vocabulary"
+          description="Unique vocabulary in the selected conversation."
+        >
+          <AnalyticsBarChart
+            data={vocabularyData}
+            color={chartColors.orange}
+            unit="unique words"
+          />
+        </AnalyticsCard>
+        <AnalyticsCard
+          title="Words that spread"
+          description="Words introduced by a participant and later adopted by others."
+        >
+          <AnalyticsBarChart
+            data={trendData}
+            color={chartColors.purple}
+            unit="adopted words"
+          />
+        </AnalyticsCard>
+      </div>
+    </section>
+  );
 }
 
 export default function Home() {
@@ -1173,13 +1866,19 @@ export default function Home() {
     : [];
   const activeSlideIndex = Math.min(
     slideIndex,
-    Math.max(0, availableSuperlatives.length - 1),
+    Math.max(0, availableSuperlatives.length),
   );
-  const activeSlide = availableSuperlatives[activeSlideIndex];
+  const isFinalSlide =
+    availableSuperlatives.length > 0 &&
+    activeSlideIndex === availableSuperlatives.length;
+  const activeSlide = isFinalSlide
+    ? undefined
+    : availableSuperlatives[activeSlideIndex];
   const activeWinner = activeSlide?.[1] ?? null;
-  const podiumRows = displayedReport
-    ? leaderboardRows(displayedReport, activeSlide[0])
-    : [];
+  const podiumRows =
+    displayedReport && activeSlide
+      ? leaderboardRows(displayedReport, activeSlide[0])
+      : [];
   const podium2nd = podiumRows[1] ?? null;
   const podium3rd = podiumRows[2] ?? null;
   const mainCharacterLeaderboard =
@@ -1208,7 +1907,7 @@ export default function Home() {
   const advanceToNextSlide = () => {
     setSlideDirection("right");
     setSlideIndex((current) =>
-      Math.min(availableSuperlatives.length - 1, current + 1),
+      Math.min(availableSuperlatives.length, current + 1),
     );
     setExpandedSuperlative(null);
     setWinnerRevealed(false);
@@ -1217,16 +1916,13 @@ export default function Home() {
   };
 
   const manualStepForward = () => {
-    if (
-      podiumRevealed &&
-      activeSlideIndex >= availableSuperlatives.length - 1
-    ) {
+    if (podiumRevealed && activeSlideIndex >= availableSuperlatives.length) {
       return;
     }
     if (podiumRevealed) {
       setSlideDirection("right");
       setSlideIndex((current) =>
-        Math.min(availableSuperlatives.length - 1, current + 1),
+        Math.min(availableSuperlatives.length, current + 1),
       );
       setExpandedSuperlative(null);
       setWinnerRevealed(false);
@@ -1261,7 +1957,9 @@ export default function Home() {
       winnerSettled: boolean;
     } | null = null;
     try {
-      saved = JSON.parse(window.sessionStorage.getItem(DECK_STATE_KEY) ?? "null");
+      saved = JSON.parse(
+        window.sessionStorage.getItem(DECK_STATE_KEY) ?? "null",
+      );
     } catch {
       saved = null;
     }
@@ -1269,9 +1967,10 @@ export default function Home() {
     if (saved.chatId !== activeSavedReportId) return;
     const idx = Math.min(
       Math.max(0, saved.slideIndex ?? 0),
-      availableSuperlatives.length - 1,
+      availableSuperlatives.length,
     );
-    lastSlideKeyRef.current = availableSuperlatives[idx][0];
+    if (idx < availableSuperlatives.length)
+      lastSlideKeyRef.current = availableSuperlatives[idx][0];
     setSlideIndex(idx);
     setWinnerRevealed(saved.winnerRevealed);
     setPodiumRevealed(saved.podiumRevealed);
@@ -1312,8 +2011,9 @@ export default function Home() {
       setExpandedSuperlative(null);
       setSlideIndex((current) => {
         if (current >= availableSuperlatives.length - 1) {
+          setSlideIndex(availableSuperlatives.length);
           setAutoPlay(false);
-          return current;
+          return availableSuperlatives.length;
         }
         setSlideDirection("right");
         return current + 1;
@@ -1349,8 +2049,7 @@ export default function Home() {
       setVisibilityTick((t) => t + 1);
     }
     document.addEventListener("visibilitychange", onVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
   useEffect(() => {
@@ -1372,8 +2071,7 @@ export default function Home() {
       const dx = to.left - from.left;
       const dy = to.top - from.top;
       name.style.transformOrigin = "left top";
-      name.style.transform =
-        `translate(${dx}px, ${dy}px) scale(${scale})`;
+      name.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
     });
     const settle = window.setTimeout(() => {
       setWinnerSettled(true);
@@ -2013,12 +2711,66 @@ export default function Home() {
                 <strong>{animReactions}</strong>
               </div>
             </div>
-            {activeSlide && activeWinner && (
+            {isFinalSlide ? (
+              <>
+                <div className="deck-counter-row">
+                  <div className="deck-counter">
+                    FINAL RESULTS · {availableSuperlatives.length} CROWNS
+                  </div>
+                </div>
+                <div className="deck-stage">
+                  <div className="superlative-deck podium-deck final-results-deck">
+                    <FinalResultsSlide
+                      report={displayedReport}
+                      onPrevious={() => {
+                        setSlideDirection("left");
+                        setSlideIndex(
+                          Math.max(0, availableSuperlatives.length - 1),
+                        );
+                        setWinnerRevealed(false);
+                        setPodiumRevealed(false);
+                        setWinnerSettled(false);
+                      }}
+                    />
+                  </div>
+                  <div className="deck-navigation">
+                    <div className="deck-dots" aria-label="Superlative slides">
+                      {availableSuperlatives.map(([key], index) => (
+                        <button
+                          type="button"
+                          key={key}
+                          className={
+                            viewedSlides.has(index)
+                              ? "deck-dot viewed"
+                              : "deck-dot"
+                          }
+                          aria-label={`Go to ${titleLabels[key] ?? key}`}
+                          onClick={() => {
+                            setSlideDirection("left");
+                            setSlideIndex(index);
+                            setExpandedSuperlative(null);
+                            setWinnerRevealed(false);
+                            setPodiumRevealed(false);
+                            setWinnerSettled(false);
+                          }}
+                        />
+                      ))}
+                      <button
+                        type="button"
+                        className="deck-dot final-dot active"
+                        aria-label="Go to final results"
+                        aria-current="step"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : activeSlide && activeWinner ? (
               <>
                 <div className="deck-counter-row">
                   <div className="deck-counter">
                     SUPERLATIVE {activeSlideIndex + 1} OF{" "}
-                    {availableSuperlatives.length}
+                    {availableSuperlatives.length + 1}
                   </div>
                   <button
                     type="button"
@@ -2123,10 +2875,7 @@ export default function Home() {
                           type="button"
                           className="deck-arrow deck-arrow-right"
                           aria-label="Next superlative"
-                          disabled={
-                            activeSlideIndex ===
-                            availableSuperlatives.length - 1
-                          }
+                          disabled={isFinalSlide}
                           onClick={advanceToNextSlide}
                         >
                           <svg
@@ -2337,7 +3086,7 @@ export default function Home() {
                           type="button"
                           key={key}
                           className={
-                            key === activeSlide[0]
+                            key === activeSlide?.[0]
                               ? "deck-dot active"
                               : viewedSlides.has(index)
                                 ? "deck-dot viewed"
@@ -2345,7 +3094,7 @@ export default function Home() {
                           }
                           aria-label={`Go to ${titleLabels[key] ?? key}`}
                           aria-current={
-                            key === activeSlide[0] ? "step" : undefined
+                            key === activeSlide?.[0] ? "step" : undefined
                           }
                           onClick={() => {
                             const targetIndex = availableSuperlatives.findIndex(
@@ -2362,11 +3111,25 @@ export default function Home() {
                           }}
                         />
                       ))}
+                      <button
+                        type="button"
+                        className={`deck-dot final-dot${isFinalSlide ? " active" : ""}`}
+                        aria-label="Go to final results"
+                        aria-current={isFinalSlide ? "step" : undefined}
+                        onClick={() => {
+                          setSlideDirection("right");
+                          setSlideIndex(availableSuperlatives.length);
+                          setExpandedSuperlative(null);
+                          setWinnerRevealed(false);
+                          setPodiumRevealed(false);
+                          setWinnerSettled(false);
+                        }}
+                      />
                     </div>
                   </div>
                 </div>
               </>
-            )}
+            ) : null}
             {availableSuperlatives.length === 0 && (
               <div className="panel">
                 <p>No superlatives have enough data to display yet.</p>
@@ -2376,6 +3139,11 @@ export default function Home() {
               The category and first-place position appear before the winner is
               revealed. Use the arrows or dots to move through the superlatives.
             </p>
+            <ReportAnalytics
+              report={displayedReport}
+              activeKey={activeSlide?.[0]}
+              deckComplete={isFinalSlide}
+            />
             {contactsFile && unmatchedCount > 0 && (
               <p className="note">
                 {unmatchedCount} phone number{unmatchedCount === 1 ? "" : "s"}{" "}

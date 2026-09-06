@@ -12,7 +12,7 @@
   overflow-x: hidden;
   scroll-behavior: smooth;
   scroll-padding-top: 90px;
-  scroll-snap-type: y mandatory;
+  scroll-snap-type: none;
   background: #ffffff;
   color: var(--l-ink);
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
@@ -1218,6 +1218,405 @@
   color: #7a8fa6;
 }
 
+/* ---------- Analytics preview ---------- */
+.landing-analytics-preview {
+  scroll-snap-align: none;
+  max-width: 1120px;
+  margin: 0 auto;
+  min-height: 118vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 130px clamp(20px, 5vw, 48px);
+  position: relative;
+}
+.landing-analytics-preview .landing-section-head {
+  margin-bottom: 46px;
+}
+.landing-analytics-console {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(22px, 4vw, 38px);
+  border: 1px solid rgba(17, 73, 124, 0.16);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 82% 12%, rgba(117, 103, 216, 0.18), transparent 28%),
+    radial-gradient(circle at 12% 90%, rgba(96, 168, 211, 0.12), transparent 30%),
+    #f8fbfe;
+  box-shadow: 0 28px 80px rgba(17, 73, 124, 0.13), inset 0 1px rgba(255, 255, 255, 0.8);
+}
+.landing-analytics-console::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 25%, rgba(255, 255, 255, 0.72) 48%, transparent 66%);
+  background-size: 220% 100%;
+  animation: analyticsGlint 8s ease-in-out infinite;
+}
+@keyframes analyticsGlint {
+  0%, 48%, 100% { background-position: 160% 0; opacity: 0; }
+  58% { opacity: 0.7; }
+  75% { background-position: -60% 0; opacity: 0; }
+}
+.landing-analytics-console-top,
+.landing-analytics-visuals {
+  position: relative;
+  z-index: 1;
+}
+.landing-analytics-console-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid rgba(17, 73, 124, 0.12);
+}
+.landing-analytics-overline {
+  color: #7567d8;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+}
+.landing-analytics-console h3 {
+  margin: 8px 0 0;
+  color: #1a1a2e;
+  font-family: var(--font-display), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(22px, 4vw, 34px);
+  letter-spacing: -0.04em;
+}
+.landing-analytics-switcher {
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid #d7e5f0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+}
+.landing-analytics-switcher button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: transparent;
+  color: #4c5f78;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease;
+}
+.landing-analytics-switcher button:hover {
+  transform: translateY(-1px);
+  color: #155a8e;
+}
+.landing-analytics-switcher button.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #155a8e, #7567d8);
+  box-shadow: 0 6px 16px rgba(21, 90, 142, 0.25);
+}
+.landing-analytics-visuals {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(28px, 5vw, 66px);
+  align-items: center;
+  padding-top: 30px;
+}
+.landing-donut-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(130px, 1fr);
+  align-items: center;
+  gap: 22px;
+}
+.landing-donut {
+  display: grid;
+  width: min(250px, 100%);
+  aspect-ratio: 1;
+  place-items: center;
+  margin: auto;
+  border-radius: 50%;
+  box-shadow: 0 18px 35px rgba(17, 73, 124, 0.14);
+  animation: donutFloat 5s ease-in-out infinite;
+}
+.landing-donut::before {
+  content: "";
+  grid-area: 1 / 1;
+  width: 65%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #f8fbfe;
+  box-shadow: inset 0 0 0 1px rgba(17, 73, 124, 0.08);
+}
+.landing-donut > span {
+  position: relative;
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  color: #1a1a2e;
+  text-align: center;
+}
+.landing-donut strong {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-size: 26px;
+}
+.landing-donut small {
+  color: #7a8fa6;
+  font-size: 10px;
+  font-weight: 700;
+}
+@keyframes donutFloat {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-7px) rotate(2deg); }
+}
+.landing-donut-legend,
+.landing-bars-grid {
+  display: grid;
+  gap: 10px;
+}
+.landing-legend-item,
+.landing-bar-label {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  color: #4c5f78;
+  font-size: 12px;
+}
+.landing-legend-item strong,
+.landing-bar-label strong {
+  color: #1a1a2e;
+  font-size: 12px;
+}
+.landing-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.7);
+}
+.landing-bar-row {
+  display: grid;
+  gap: 6px;
+}
+.landing-bar-track {
+  height: 11px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e4edf5;
+  box-shadow: inset 0 1px 3px rgba(17, 73, 124, 0.1);
+}
+.landing-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  box-shadow: 0 3px 12px rgba(17, 73, 124, 0.2);
+}
+.landing-analytics-caption {
+  margin: 22px 0 0;
+  color: #7a8fa6;
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* ---------- Cinematic scroll choreography ---------- */
+.landing {
+  isolation: isolate;
+  perspective: 1200px;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(96, 168, 211, 0.08), transparent 24%),
+    radial-gradient(circle at 88% 66%, rgba(117, 103, 216, 0.06), transparent 28%),
+    #ffffff;
+}
+.landing::before,
+.landing::after {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.45;
+  filter: blur(20px);
+}
+.landing::before {
+  background: conic-gradient(
+    from 120deg at 50% 50%,
+    transparent 0deg,
+    rgba(96, 168, 211, 0.12) 75deg,
+    transparent 150deg,
+    rgba(117, 103, 216, 0.09) 235deg,
+    transparent 310deg
+  );
+  animation: landingAurora 18s ease-in-out infinite alternate;
+}
+.landing::after {
+  inset: 0;
+  opacity: 0.18;
+  filter: none;
+  background-image: radial-gradient(rgba(21, 90, 142, 0.2) 0.7px, transparent 0.7px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(to bottom, transparent, black 18%, black 82%, transparent);
+}
+@keyframes landingAurora {
+  0% { transform: translate3d(-3%, -2%, 0) rotate(-4deg) scale(1); }
+  100% { transform: translate3d(3%, 2%, 0) rotate(6deg) scale(1.08); }
+}
+.landing-hero,
+.landing-section,
+.landing-showcase,
+.landing-cta {
+  position: relative;
+}
+.landing-hero::before {
+  content: "";
+  position: absolute;
+  inset: 8% 8% auto;
+  height: 56%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(96, 168, 211, 0.13), transparent 68%);
+  filter: blur(8px);
+  pointer-events: none;
+  animation: heroGlow 8s ease-in-out infinite alternate;
+}
+@keyframes heroGlow {
+  from { transform: scale(0.9); opacity: 0.55; }
+  to { transform: scale(1.1) translateY(3%); opacity: 1; }
+}
+.landing-hero-inner,
+.landing-section-head,
+.landing-step,
+.landing-super-cat,
+.landing-cta-inner {
+  will-change: transform;
+}
+.landing-step,
+.landing-super-cat {
+  transform-style: preserve-3d;
+}
+.landing-step::after,
+.landing-super-cat::after {
+  background: linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, 0.55) 48%, transparent 70%);
+  background-size: 220% 100%;
+  transform: translateX(-120%);
+}
+.landing-step:hover::after,
+.landing-super-cat:hover::after {
+  opacity: 1;
+  transform: translateX(120%);
+  transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+}
+.landing-showcase {
+  z-index: 1;
+}
+.landing-showcase::before {
+  content: "";
+  position: absolute;
+  width: min(760px, 90%);
+  height: 420px;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(21, 90, 142, 0.18), transparent 68%);
+  filter: blur(32px);
+  opacity: 0.65;
+  pointer-events: none;
+}
+.showcase-window {
+  transform-style: preserve-3d;
+  transition: box-shadow 0.5s ease, border-color 0.5s ease;
+}
+.showcase-window::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65), inset 0 -60px 100px rgba(21, 90, 142, 0.04);
+}
+.showcase-window:hover {
+  border-color: rgba(96, 168, 211, 0.62);
+  box-shadow: 0 60px 120px -30px rgba(17, 73, 124, 0.3), 0 0 0 8px rgba(96, 168, 211, 0.04);
+}
+.showcase-chrome {
+  position: relative;
+  overflow: hidden;
+}
+.showcase-chrome::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -25%;
+  width: 24%;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+  animation: chromeSweep 7s ease-in-out infinite;
+}
+@keyframes chromeSweep {
+  0%, 62%, 100% { left: -25%; opacity: 0; }
+  70% { opacity: 0.9; }
+  82% { left: 125%; opacity: 0; }
+}
+.landing-section-head {
+  position: relative;
+}
+.landing-section-head::after {
+  content: "";
+  display: block;
+  width: 54px;
+  height: 3px;
+  margin: 24px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a8d3, #b7a6f5, #d4af37);
+  box-shadow: 0 0 18px rgba(96, 168, 211, 0.45);
+}
+.landing-timeline {
+  position: relative;
+  overflow: hidden;
+}
+.landing-timeline::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: -20%;
+  width: 18%;
+  background: linear-gradient(90deg, transparent, #ffffff, transparent);
+  animation: timelineSweep 4s ease-in-out infinite;
+}
+@keyframes timelineSweep {
+  0%, 100% { left: -20%; }
+  55% { left: 110%; }
+}
+.landing-superlatives {
+  overflow: hidden;
+}
+.landing-super-cat {
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.35s ease;
+}
+.landing-super-cat:hover {
+  transform: translateY(-8px) rotateX(2deg) rotateY(-1deg);
+}
+.landing-super-cat:nth-child(even):hover {
+  transform: translateY(-8px) rotateX(2deg) rotateY(1deg);
+}
+.landing-marquee {
+  mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
+}
+.landing-cta::before {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(from 0deg, transparent, rgba(96, 168, 211, 0.16), transparent 26%, rgba(117, 103, 216, 0.12), transparent 52%);
+  animation: ctaOrbit 14s linear infinite;
+  pointer-events: none;
+}
+@keyframes ctaOrbit {
+  to { transform: rotate(1turn); }
+}
+/* Framer Motion owns section reveal timing. Avoid CSS scroll-timeline here:
+   browsers can leave a view timeline at its initial keyframe when the page
+   uses a nested scrolling container, which would keep the content blurred. */
+
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
   .landing-nav-links {
@@ -1228,6 +1627,12 @@
   }
   .landing-showcase {
     padding-top: 76px;
+  }
+  .landing-analytics-visuals {
+    grid-template-columns: 1fr;
+  }
+  .landing-donut-panel {
+    grid-template-columns: minmax(180px, 0.8fr) minmax(130px, 1fr);
   }
   .landing-super-cats {
     grid-template-columns: 1fr;
@@ -1254,6 +1659,32 @@
 }
 
 @media (max-width: 640px) {
+  .landing-analytics-preview {
+    min-height: 100vh;
+    padding-top: 90px;
+    padding-bottom: 90px;
+  }
+  .landing-analytics-console-top {
+    display: block;
+  }
+  .landing-analytics-switcher {
+    margin-top: 18px;
+    width: max-content;
+    max-width: 100%;
+  }
+  .landing-analytics-switcher button {
+    padding: 7px 8px;
+    font-size: 11px;
+  }
+  .landing-donut-panel {
+    grid-template-columns: 1fr;
+  }
+  .landing-donut {
+    width: min(220px, 78vw);
+  }
+  .landing-analytics-preview .landing-section-head {
+    margin-bottom: 32px;
+  }
   .landing-hero {
     min-height: 100vh;
     padding-top: 100px;
@@ -1275,7 +1706,18 @@
   .landing-marquee-track,
   .landing-shimmer-bar,
   .landing-brand-mark,
-  .landing-bubble {
+  .landing-bubble,
+  .landing::before,
+  .landing::after,
+  .landing-hero::before,
+  .showcase-chrome::after,
+  .landing-timeline::after,
+  .landing-cta::before {
     animation: none !important;
+  }
+  .landing-step:hover,
+  .landing-super-cat:hover,
+  .showcase-window:hover {
+    transform: none !important;
   }
 }
